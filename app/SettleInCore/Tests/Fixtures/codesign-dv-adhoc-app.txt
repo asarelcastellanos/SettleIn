@@ -1,0 +1,19 @@
+Executable=/fixture/path/adhoc/Tiny.app/Contents/MacOS/Tiny
+Identifier=dev.settlein.tiny
+Format=app bundle with generic
+CodeDirectory v=20100 size=194 flags=0x2(adhoc) hashes=1+3 location=embedded
+Hash type=sha256 size=32
+CandidateCDHash sha256=ab4f2344718e8e414a37b823a634eb865515cc8d
+CandidateCDHashFull sha256=ab4f2344718e8e414a37b823a634eb865515cc8d036e01ca80a3c95e32d8a553
+Hash choices=sha256
+CMSDigest=ab4f2344718e8e414a37b823a634eb865515cc8d036e01ca80a3c95e32d8a553
+CMSDigestType=2
+Page size=none
+CDHash=ab4f2344718e8e414a37b823a634eb865515cc8d
+Signature=adhoc
+Info.plist entries=5
+TeamIdentifier=not set
+Sealed Resources version=2 rules=13 files=0
+Internal requirements count=1 size=64
+Total signatures=1
+Chosen signature=1

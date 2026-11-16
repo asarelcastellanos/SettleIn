@@ -1,0 +1,2 @@
+/Applications/Google Chrome.app: accepted
+source=Notarized Developer ID

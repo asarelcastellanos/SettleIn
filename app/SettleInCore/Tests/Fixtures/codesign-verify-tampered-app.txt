@@ -1,0 +1,1 @@
+/fixture/path/tamper/Tiny.app: invalid Info.plist (plist or signature have been modified)

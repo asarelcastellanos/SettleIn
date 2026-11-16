@@ -1,0 +1,2 @@
+Package "Tiny.pkg":
+   Status: no signature

@@ -1,0 +1,24 @@
+{
+  "apps": [
+    {
+      "id": "example",
+      "name": "Example",
+      "category": "Utilities",
+      "homepage": "https://example.com",
+      "version": "1.2.3",
+      "installType": "dmg",
+      "appName": "Example.app",
+      "allowedHosts": [
+        "downloads.example.com"
+      ],
+      "teamID": "ABCDE12345",
+      "bundleID": "com.example.Example",
+      "uninstallPaths": [
+        "~/Library/Preferences"
+      ],
+      "architecture": "universal",
+      "downloadURL": "https://downloads.example.com/Example-1.2.3.dmg",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+  ]
+}

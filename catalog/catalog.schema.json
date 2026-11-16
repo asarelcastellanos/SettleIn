@@ -1,0 +1,152 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/asarelcastellanos/SettleIn/catalog/catalog.schema.json",
+  "title": "SettleIn catalog",
+  "description": "The app catalog. docs/catalog.md lists the rules this schema cannot express.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apps"],
+  "properties": {
+    "apps": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/app" }
+    }
+  },
+  "definitions": {
+    "httpsURL": {
+      "type": "string",
+      "pattern": "^https://[^/?#@\\s]+(/[^\\s]*)?$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{64}$"
+    },
+    "reverseDNS": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$"
+    },
+    "uninstallPath": {
+      "description": "A path under /Applications, ~/Library, or ~/.config. Not a root, not a direct child of ~/Library, no .. component, no wildcard.",
+      "type": "string",
+      "pattern": "^(?!.*[\\x00-\\x1f\\x7f])(?!.*(^|/)\\.\\.(/|$))(?!.*(^|/)\\.(/|$))(?!.*//)(?!.*[*?\\[\\]{}])(/Applications/[^/]+(/[^/]+)*|~/Library/[^/]+/[^/]+(/[^/]+)*|~/\\.config/[^/]+(/[^/]+)*)$"
+    },
+    "download": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["downloadURL"],
+      "properties": {
+        "downloadURL": { "$ref": "#/definitions/httpsURL" },
+        "sha256": { "$ref": "#/definitions/sha256" }
+      }
+    },
+    "pinnedDownload": {
+      "type": "object",
+      "required": ["sha256"]
+    },
+    "unpinnedDownload": {
+      "type": "object",
+      "not": { "required": ["sha256"] }
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "category",
+        "homepage",
+        "version",
+        "installType",
+        "allowedHosts",
+        "teamID",
+        "bundleID",
+        "uninstallPaths",
+        "architecture"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "name": { "type": "string", "minLength": 1 },
+        "category": { "type": "string", "minLength": 1 },
+        "homepage": { "$ref": "#/definitions/httpsURL" },
+        "version": { "type": "string", "minLength": 1 },
+        "installType": { "enum": ["dmg", "zip", "pkg"] },
+        "appName": { "type": "string", "pattern": "^[^/\\\\]+\\.app$" },
+        "pkgIdentifier": { "$ref": "#/definitions/reverseDNS" },
+        "allowedHosts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+          }
+        },
+        "teamID": { "type": "string", "pattern": "^[A-Z0-9]{10}$" },
+        "bundleID": { "$ref": "#/definitions/reverseDNS" },
+        "uninstallPaths": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/uninstallPath" }
+        },
+        "architecture": { "enum": ["universal", "perArch"] },
+        "downloadURL": { "$ref": "#/definitions/httpsURL" },
+        "sha256": { "$ref": "#/definitions/sha256" },
+        "arm64": { "$ref": "#/definitions/download" },
+        "x86_64": { "$ref": "#/definitions/download" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "installType": { "const": "pkg" } } },
+          "then": {
+            "required": ["pkgIdentifier"],
+            "not": { "required": ["appName"] }
+          },
+          "else": {
+            "required": ["appName"],
+            "not": { "required": ["pkgIdentifier"] }
+          }
+        },
+        {
+          "if": { "properties": { "architecture": { "const": "universal" } } },
+          "then": {
+            "required": ["downloadURL"],
+            "not": { "anyOf": [{ "required": ["arm64"] }, { "required": ["x86_64"] }] }
+          },
+          "else": {
+            "required": ["arm64", "x86_64"],
+            "not": { "anyOf": [{ "required": ["downloadURL"] }, { "required": ["sha256"] }] }
+          }
+        },
+        {
+          "if": { "properties": { "version": { "const": "latest" } } },
+          "then": {
+            "allOf": [
+              {
+                "if": { "properties": { "architecture": { "const": "universal" } } },
+                "then": { "$ref": "#/definitions/unpinnedDownload" },
+                "else": {
+                  "properties": {
+                    "arm64": { "$ref": "#/definitions/unpinnedDownload" },
+                    "x86_64": { "$ref": "#/definitions/unpinnedDownload" }
+                  }
+                }
+              }
+            ]
+          },
+          "else": {
+            "allOf": [
+              {
+                "if": { "properties": { "architecture": { "const": "universal" } } },
+                "then": { "$ref": "#/definitions/pinnedDownload" },
+                "else": {
+                  "properties": {
+                    "arm64": { "$ref": "#/definitions/pinnedDownload" },
+                    "x86_64": { "$ref": "#/definitions/pinnedDownload" }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

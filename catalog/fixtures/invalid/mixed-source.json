@@ -1,0 +1,32 @@
+{
+  "apps": [
+    {
+      "id": "example",
+      "name": "Example",
+      "category": "Utilities",
+      "homepage": "https://example.com",
+      "version": "1.2.3",
+      "installType": "dmg",
+      "appName": "Example.app",
+      "allowedHosts": [
+        "downloads.example.com"
+      ],
+      "teamID": "ABCDE12345",
+      "bundleID": "com.example.Example",
+      "uninstallPaths": [
+        "/Applications/Example.app",
+        "~/Library/Application Support/Example"
+      ],
+      "architecture": "perArch",
+      "arm64": {
+        "downloadURL": "https://downloads.example.com/Example-1.2.3-arm64.dmg",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      },
+      "x86_64": {
+        "downloadURL": "https://downloads.example.com/Example-1.2.3-x86_64.dmg",
+        "sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+      },
+      "downloadURL": "https://downloads.example.com/Example-1.2.3.dmg"
+    }
+  ]
+}

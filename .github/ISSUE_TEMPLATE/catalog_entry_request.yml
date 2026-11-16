@@ -1,0 +1,60 @@
+name: Catalog entry request
+description: Ask for an app to be added to the SettleIn catalog.
+title: "Catalog: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read the catalog entry steps in [CONTRIBUTING.md](https://github.com/asarelcastellanos/SettleIn/blob/main/CONTRIBUTING.md) first. An entry needs a versioned download URL so the catalog can pin a SHA-256 hash to it.
+  - type: input
+    id: app-name
+    attributes:
+      label: App name
+    validations:
+      required: true
+  - type: input
+    id: homepage
+    attributes:
+      label: Homepage
+      description: The vendor's official site.
+      placeholder: https://example.com
+    validations:
+      required: true
+  - type: input
+    id: download-page
+    attributes:
+      label: Download page
+      description: The vendor's page where the download link lives.
+      placeholder: https://example.com/download
+    validations:
+      required: true
+  - type: dropdown
+    id: install-type
+    attributes:
+      label: Install type
+      description: The format of the file you download.
+      options:
+        - dmg
+        - zip
+        - pkg
+    validations:
+      required: true
+  - type: dropdown
+    id: versioned-url
+    attributes:
+      label: Is the download URL versioned
+      description: A versioned URL names a specific release, such as a version number in the file name. A URL that always serves the latest build is not versioned.
+      options:
+        - "Yes"
+        - "No"
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: team-id
+    attributes:
+      label: Vendor Team ID
+      description: Optional. Find it with codesign -dv on the vendor's app. Leave this blank if you do not know it.
+      placeholder: ABCDE12345
+    validations:
+      required: false

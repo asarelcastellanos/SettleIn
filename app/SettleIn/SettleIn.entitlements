@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The App Sandbox is off on purpose. SettleIn must write apps into /Applications and run
+  installers (the macOS installer tool and disk image tools), and the sandbox forbids both.
+  Hardened Runtime stays on. This file lists no com.apple.security.cs.* exception
+  entitlements and no network or file entitlements, because the app needs none of them.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+</dict>
+</plist>

@@ -43,7 +43,7 @@ All tests run locally on a Mac. These commands become available as the app, the 
 ```sh
 swift test --package-path app/SettleInCore
 xcodebuild -project app/SettleIn.xcodeproj -scheme SettleIn -destination 'platform=macOS' test
-swiftlint --strict app
+swiftlint --strict --config app/.swiftlint.yml app
 bash catalog/validate.sh
 ```
 

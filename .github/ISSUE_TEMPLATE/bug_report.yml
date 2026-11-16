@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a problem with SettleIn that is not a security vulnerability.
+title: "Bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not use this form for a security vulnerability. Report those through [GitHub private vulnerability reporting](https://github.com/asarelcastellanos/SettleIn/security/advisories/new) instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the problem and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the steps that trigger the problem, starting from a fresh launch of the app.
+      placeholder: |
+        1. Open SettleIn.
+        2. Select an app.
+        3. Click Install.
+    validations:
+      required: true
+  - type: input
+    id: settlein-version
+    attributes:
+      label: SettleIn version
+      description: Use the version shown in the app, or the commit hash if you built it yourself.
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      description: Find it under Apple menu, About This Mac.
+      placeholder: macOS 15.0
+    validations:
+      required: true
+  - type: dropdown
+    id: architecture
+    attributes:
+      label: Mac chip
+      options:
+        - Apple silicon
+        - Intel
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste any error text or attach a screenshot. Remove personal information first.
+    validations:
+      required: false

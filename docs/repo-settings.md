@@ -48,7 +48,7 @@ The first line shows `204` when alerts are on. It shows `404` when they are off.
 
 ## Dependabot security updates
 
-**Reason.** Dependabot opens a pull request that upgrades a vulnerable dependency to a patched version. The version updates in `.github/dependabot.yml` are separate. They run weekly for `/app/SettleInCore` and `/site`.
+**Reason.** Dependabot opens a pull request that upgrades a vulnerable dependency to a patched version. The version updates in `.github/dependabot.yml` are separate. They run weekly for `/app/SettleInCore`.
 
 Apply:
 

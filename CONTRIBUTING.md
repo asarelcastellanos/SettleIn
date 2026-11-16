@@ -38,7 +38,7 @@ Put the printed hash in the entry. Run the command twice, on two separate downlo
 
 ## Run the tests
 
-All tests run locally on a Mac. These commands become available as the app, the package, and the catalog land in [issue 4](https://github.com/asarelcastellanos/SettleIn/issues/4) and [issue 5](https://github.com/asarelcastellanos/SettleIn/issues/5).
+All tests run locally on a Mac. The first three commands work now. `bash catalog/validate.sh` arrives with [issue 5](https://github.com/asarelcastellanos/SettleIn/issues/5).
 
 ```sh
 swift test --package-path app/SettleInCore
@@ -47,7 +47,7 @@ swiftlint --strict --config app/.swiftlint.yml app
 bash catalog/validate.sh
 ```
 
-Run all four before you open a pull request. A weekly catalog check runs on GitHub Actions starting at v0.9.0.
+Run every command that exists before you open a pull request. A weekly catalog check runs on GitHub Actions starting at v0.9.0.
 
 ## Open a pull request
 

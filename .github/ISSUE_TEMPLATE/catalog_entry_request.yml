@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Read the catalog entry steps in [CONTRIBUTING.md](https://github.com/asarelcastellanos/SettleIn/blob/main/CONTRIBUTING.md) first. An entry needs a versioned download URL so the catalog can pin a SHA-256 hash to it.
+        Read the catalog entry steps in [CONTRIBUTING.md](https://github.com/asarelcastellanos/SettleIn/blob/main/CONTRIBUTING.md) first. A versioned download URL is preferred, so the catalog can pin a SHA-256 hash to it. A `latest` URL is allowed only when the vendor has no versioned one, and that entry has no hash and relies on the Team ID check alone.
   - type: input
     id: app-name
     attributes:

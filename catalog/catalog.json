@@ -1,0 +1,73 @@
+{
+  "apps": [
+    {
+      "id": "rectangle",
+      "name": "Rectangle",
+      "category": "Utilities",
+      "homepage": "https://rectangleapp.com",
+      "version": "2.0.4",
+      "installType": "dmg",
+      "appName": "Rectangle.app",
+      "allowedHosts": [
+        "github.com",
+        "release-assets.githubusercontent.com"
+      ],
+      "teamID": "XSYZ3E4B7D",
+      "bundleID": "com.knollsoft.Rectangle",
+      "uninstallPaths": [
+        "/Applications/Rectangle.app",
+        "~/Library/Application Support/Rectangle",
+        "~/Library/Preferences/com.knollsoft.Rectangle.plist",
+        "~/Library/Caches/com.knollsoft.Rectangle"
+      ],
+      "architecture": "universal",
+      "downloadURL": "https://github.com/rxhanson/Rectangle/releases/download/v2.0.4/Rectangle2.0.4.dmg",
+      "sha256": "9f820a2e56bd2c27cdda4fb4556de3cbcfcbac052d9eeb2179d49e2dae277abc"
+    },
+    {
+      "id": "alttab",
+      "name": "AltTab",
+      "category": "Utilities",
+      "homepage": "https://alt-tab.app",
+      "version": "11.10.2",
+      "installType": "zip",
+      "appName": "AltTab.app",
+      "allowedHosts": [
+        "github.com",
+        "release-assets.githubusercontent.com"
+      ],
+      "teamID": "QXD7GW8FHY",
+      "bundleID": "com.lwouis.alt-tab-macos",
+      "uninstallPaths": [
+        "/Applications/AltTab.app",
+        "~/Library/Preferences/com.lwouis.alt-tab-macos.plist",
+        "~/Library/Caches/com.lwouis.alt-tab-macos"
+      ],
+      "architecture": "universal",
+      "downloadURL": "https://github.com/lwouis/alt-tab-macos/releases/download/v11.10.2/AltTab-11.10.2.zip",
+      "sha256": "5a2a821a83be1092df0f63d2403359ef2f7d52ad39cec36d930e4c7554cc045b"
+    },
+    {
+      "id": "google-chrome",
+      "name": "Google Chrome",
+      "category": "Browsers",
+      "homepage": "https://www.google.com/chrome/",
+      "version": "latest",
+      "installType": "pkg",
+      "pkgIdentifier": "com.google.Chrome",
+      "allowedHosts": [
+        "dl.google.com"
+      ],
+      "teamID": "EQHXZ8M8AV",
+      "bundleID": "com.google.Chrome",
+      "uninstallPaths": [
+        "/Applications/Google Chrome.app",
+        "~/Library/Application Support/Google/Chrome",
+        "~/Library/Caches/Google/Chrome",
+        "~/Library/Preferences/com.google.Chrome.plist"
+      ],
+      "architecture": "universal",
+      "downloadURL": "https://dl.google.com/chrome/mac/universal/stable/gcem/GoogleChrome.pkg"
+    }
+  ]
+}

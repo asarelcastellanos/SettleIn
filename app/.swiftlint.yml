@@ -1,0 +1,45 @@
+# Run from the repository root with `swiftlint --strict --config app/.swiftlint.yml app`.
+included:
+  - SettleIn
+  - SettleInCore
+
+excluded:
+  - SettleInCore/.build
+
+disabled_rules:
+  - todo
+
+opt_in_rules:
+  - closure_spacing
+  - empty_count
+  - explicit_init
+  - first_where
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - overridden_super_call
+  - redundant_nil_coalescing
+
+line_length:
+  warning: 120
+  error: 140
+  ignores_comments: true
+  ignores_urls: true
+
+file_length:
+  warning: 400
+  error: 800
+
+function_body_length:
+  warning: 50
+  error: 100
+
+type_body_length:
+  warning: 250
+  error: 400
+
+cyclomatic_complexity:
+  warning: 10
+  error: 20
+
+force_cast: error
+force_try: error

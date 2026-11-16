@@ -6,7 +6,7 @@ Describe what this change does and why.
 
 - [ ] `swift test --package-path app/SettleInCore` passes
 - [ ] `xcodebuild -project app/SettleIn.xcodeproj -scheme SettleIn -destination 'platform=macOS' test` passes
-- [ ] `swiftlint --strict app` passes
+- [ ] `swiftlint --strict --config app/.swiftlint.yml app` passes
 - [ ] `bash catalog/validate.sh` passes
 - [ ] I added or updated tests for this change
 

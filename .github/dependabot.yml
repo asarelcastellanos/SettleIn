@@ -1,0 +1,8 @@
+version: 2
+updates:
+  - package-ecosystem: "swift"
+    directory: "/app/SettleInCore"
+    schedule:
+      interval: "weekly"
+  # The npm entry for /site is added by the website milestone (v0.6.0), in the same PR that adds package.json.
+  # The github-actions entry arrives with issue 13, when the first workflow lands.

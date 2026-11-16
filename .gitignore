@@ -1,0 +1,23 @@
+# Xcode
+DerivedData
+xcuserdata
+*.xcuserstate
+build
+
+# Swift package manager
+.build
+.swiftpm
+
+# macOS
+.DS_Store
+
+# Node
+node_modules
+dist
+.next
+out
+
+# Secrets
+.env*
+*.p12
+*.mobileprovision

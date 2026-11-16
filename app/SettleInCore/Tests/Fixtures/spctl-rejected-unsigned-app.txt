@@ -1,0 +1,2 @@
+/fixture/path/unsigned/Tiny.app: rejected
+source=no usable signature

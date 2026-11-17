@@ -94,13 +94,23 @@ enum TestApp {
         return info["Marker"] as? String
     }
 
+    /// Runs `hdiutil create`. It fails with "Resource busy" or "Resource temporarily unavailable" when another
+    /// test creates or attaches an image at the same time, so it retries once after one second for those two
+    /// messages and for no other failure.
     static func makeDMG(from folder: URL, at output: URL) async throws {
-        let result = try await ProcessCommandRunner().run(
-            executable: URL(fileURLWithPath: "/usr/bin/hdiutil"),
-            arguments: ["create", "-quiet", "-srcfolder", folder.path, "-volname", "SettleInTest",
-                        "-format", "UDZO", "-ov", output.path]
+        let arguments = ["create", "-srcfolder", folder.path, "-volname", "SettleInTest",
+                         "-format", "UDZO", "-ov", output.path]
+        var result = try await ProcessCommandRunner().run(
+            executable: URL(fileURLWithPath: "/usr/bin/hdiutil"), arguments: arguments
         )
-        try #require(result.exitCode == 0, "hdiutil create failed: \(result.stderr)")
+        let transient = ["Resource busy", "Resource temporarily unavailable"]
+        if result.exitCode != 0, transient.contains(where: { result.combinedOutput.contains($0) }) {
+            try await Task.sleep(for: .seconds(1))
+            result = try await ProcessCommandRunner().run(
+                executable: URL(fileURLWithPath: "/usr/bin/hdiutil"), arguments: arguments
+            )
+        }
+        try #require(result.exitCode == 0, "hdiutil create failed: \(result.combinedOutput)")
     }
 
     /// Packs `source` into a zip. With `keepParent`, the zip root holds `source` itself, as a vendor's zip of an

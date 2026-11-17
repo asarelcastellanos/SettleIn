@@ -50,13 +50,12 @@ extension IntegrationTests {
 
             #expect(outcome == .completed(.installed))
             let calls = await runner.calls
-            let open = try #require(calls.first)
-            #expect(open.tool == "open")
+            let open = try #require(calls.first { $0.tool == "open" })
             #expect(open.arguments.count == 3)
             #expect(Array(open.arguments.prefix(2)) == ["-a", Self.installerApp])
             #expect(open.arguments.last?.hasPrefix(world.downloads.path) == true)
             #expect(open.arguments.last?.hasSuffix("/Fixture.pkg") == true)
-            #expect(calls.dropFirst().allSatisfy { $0.tool == "pkgutil" })
+            #expect(calls.filter { $0.tool != "open" }.allSatisfy { $0.tool == "pkgutil" })
             #expect(await eventually { states.names(of: app.id).last == "installed" })
             #expect(world.installedApps.isEmpty)
             #expect(world.leftovers.isEmpty)
@@ -76,7 +75,7 @@ extension IntegrationTests {
             let outcome = await orchestrator.install(app)
 
             #expect(outcome == .completed(.idle))
-            #expect(await runner.toolNames.first == "open")
+            #expect(await runner.toolNames == ["pkgutil", "open"])
             #expect(await eventually { states.names(of: app.id).last == "idle" })
             #expect(await orchestrator.log(for: app.id).text.contains("Installer.app quit before the app appeared"))
             #expect(world.installedApps.isEmpty)

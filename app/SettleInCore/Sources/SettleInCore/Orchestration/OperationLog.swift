@@ -4,7 +4,8 @@ import Foundation
 /// codes, and each state change. The app holds no secrets, so the log holds none.
 ///
 /// The log replaces the home directory with `~` in every line, so a copied log does not show the user
-/// name. A line holds no line break, so text from outside cannot forge a second line.
+/// name. It replaces the home folder only at a path boundary. A line holds no line break, so text from outside
+/// cannot forge a second line.
 public struct OperationLog: Equatable, Sendable {
     public struct Entry: Equatable, Sendable {
         public let timestamp: Date
@@ -34,6 +35,21 @@ public struct OperationLog: Equatable, Sendable {
         // A home of "/" or "" would match every path, so the log never replaces it.
         guard homeDirectory.count > 1 else { return oneLine }
         let home = homeDirectory.hasSuffix("/") ? String(homeDirectory.dropLast()) : homeDirectory
-        return oneLine.replacingOccurrences(of: home, with: "~")
+        return Self.replacing(home, with: "~", in: oneLine)
+    }
+
+    /// Replaces `home` only where a "/" or the end of the text follows it, so `/Users/al` does not match
+    /// the start of `/Users/alice`.
+    private static func replacing(_ home: String, with tilde: String, in text: String) -> String {
+        var result = ""
+        var rest = text[...]
+        while let match = rest.range(of: home) {
+            result += rest[..<match.lowerBound]
+            let after = rest[match.upperBound...]
+            let atBoundary = after.isEmpty || after.unicodeScalars.first == "/"
+            result += atBoundary ? tilde : home
+            rest = after
+        }
+        return result + rest
     }
 }

@@ -5,12 +5,14 @@ import Foundation
 public enum PackageInstallState: Equatable, Sendable {
     /// Installer.app is open and the app is not installed yet. The user sees the macOS prompt.
     case waitingForUser
-    /// The app bundle exists and the package receipt is not recorded yet. SettleIn infers this state.
+    /// The app bundle exists and the install is not finished. SettleIn infers this state.
     /// Installer.app does not report it.
     case installing
-    /// The app bundle and the package receipt both exist.
+    /// The app bundle exists and either the receipt is new or Installer.app has been closed for three polls in
+    /// a row.
     case installed
-    /// Installer.app quit with no app installed, or the caller cancelled the task.
+    /// Installer.app and the app bundle were both absent for three polls in a row, or the caller cancelled
+    /// the task.
     case cancelled
     case failed(PackageInstallFailure)
 }
@@ -21,6 +23,7 @@ public enum PackageInstallFailure: Error, Equatable, Sendable {
     case alreadyInstalled
     case notAPackageEntry
     case installerDidNotOpen
+    /// The polls that found Installer.app closed added up to the timeout, and the install did not finish.
     case timedOut
 
     public var reason: String {

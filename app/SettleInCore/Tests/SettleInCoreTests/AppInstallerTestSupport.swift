@@ -125,15 +125,18 @@ enum TestApp {
     }
 }
 
-/// Answers with a fixed result and records the paths it was asked to verify.
+/// Answers with a fixed result and records the paths and Team IDs it was asked to verify.
 actor StubSignatureChecker: AppSignatureChecking {
     private let result: SignatureResult
     private(set) var verifiedPaths: [String] = []
+    /// The Team ID of each call, so a test can check that the installer passes the catalog's value.
+    private(set) var expectedTeamIDs: [TeamID] = []
 
     init(_ result: SignatureResult) { self.result = result }
 
     func verifyApp(at app: URL, expecting expected: TeamID) async -> SignatureResult {
         verifiedPaths.append(app.path)
+        expectedTeamIDs.append(expected)
         return result
     }
 }
@@ -194,6 +197,14 @@ struct InterceptingRunner: CommandRunner {
     }
 }
 
+/// Records plain notes in the order they happen. A test uses it to check that one event came before another.
+final class OrderLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var notes: [String] = []
+    func add(_ note: String) { lock.withLock { notes.append(note) } }
+    var entries: [String] { lock.withLock { notes } }
+}
+
 final class CallLog: @unchecked Sendable {
     private let lock = NSLock()
     private var entries: [(tool: String, arguments: [String])] = []
@@ -243,19 +254,19 @@ func installFailure(_ body: () async throws -> some Any) async -> InstallError? 
 }
 
 extension InstallSandbox {
-    func makeDMG(marker: String = "one") async throws -> URL {
+    func makeDMG(marker: String = "one", bundleID: String = TestApp.bundleID) async throws -> URL {
         let folder = sources.appendingPathComponent("dmg-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        try await TestApp.build(in: folder, marker: marker)
+        try await TestApp.build(in: folder, bundleID: bundleID, marker: marker)
         let image = sources.appendingPathComponent("app-\(UUID().uuidString).dmg")
         try await TestApp.makeDMG(from: folder, at: image)
         return image
     }
 
-    func makeZip(extra: (URL) throws -> Void = { _ in }) async throws -> URL {
+    func makeZip(bundleID: String = TestApp.bundleID, extra: (URL) throws -> Void = { _ in }) async throws -> URL {
         let folder = sources.appendingPathComponent("zip-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let app = try await TestApp.build(in: folder)
+        let app = try await TestApp.build(in: folder, bundleID: bundleID)
         try extra(folder)
         let archive = sources.appendingPathComponent("app-\(UUID().uuidString).zip")
         let hasExtra = try FileManager.default.contentsOfDirectory(atPath: folder.path).count > 1

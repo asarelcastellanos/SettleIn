@@ -42,17 +42,19 @@ public enum CatalogParser {
 
         let allowedHosts = try parseAllowedHosts(fields)
         let version = try parseVersion(fields)
+        let name = try fields.nonEmptyString("name")
+        let category = try fields.nonEmptyString("category")
+        let homepage = try parseURL(fields.string("homepage"), fields: fields)
+        let install = try parseInstall(fields)
+        let teamID = try parseTeamID(fields)
+        let bundleID = try parseBundleID(fields)
+        let uninstallPaths = try parseUninstallPaths(fields)
+        if case .pkg = install, !uninstallPaths.contains(where: \.isApplicationsApp) {
+            throw fields.error(.missingApplicationsApp)
+        }
         return CatalogApp(
-            id: id,
-            name: try fields.nonEmptyString("name"),
-            category: try fields.nonEmptyString("category"),
-            homepage: try parseURL(fields.string("homepage"), fields: fields),
-            version: version,
-            install: try parseInstall(fields),
-            allowedHosts: allowedHosts,
-            teamID: try parseTeamID(fields),
-            bundleID: try parseBundleID(fields),
-            uninstallPaths: try parseUninstallPaths(fields),
+            id: id, name: name, category: category, homepage: homepage, version: version, install: install,
+            allowedHosts: allowedHosts, teamID: teamID, bundleID: bundleID, uninstallPaths: uninstallPaths,
             source: try parseSource(fields, version: version, allowedHosts: allowedHosts)
         )
     }

@@ -7,6 +7,9 @@ import Foundation
 /// - It starts with `/` or `~/`, and it has no `..` component after `~` is expanded.
 /// - It is inside `/Applications`, `~/Library`, or `~/.config`, compared one component at a time and with
 ///   letter case respected. It is not a root itself, and it is not a direct child of `~/Library`.
+/// - It follows the shape rules in `UninstallPathShape`. It holds no `.app` component before its last one, it
+///   is `/Applications/<Name>.app` under `/Applications`, it starts with an allowed folder under `~/Library`,
+///   and it goes at least one level below `~/.config`.
 /// - After every symbolic link in the path and its parent folders is resolved, the path is still inside the
 ///   same root and still has the same components below it. A symbolic link anywhere in the path refuses it.
 public struct PathGuard: Sendable {
@@ -35,6 +38,7 @@ public struct PathGuard: Sendable {
             throw ignoringCase == nil ? .outsideRoots : .caseDiffersFromRoot
         }
         try rejectRootAndLibraryChild(lexical)
+        try rejectShape(lexical)
 
         guard let resolvedComponents = PathResolution.resolve(components) else { throw .unresolvable }
         let resolvedRoots = try resolvedRootList()
@@ -42,6 +46,7 @@ public struct PathGuard: Sendable {
               resolved.root == lexical.root
         else { throw .resolvesOutsideRoots }
         try rejectRootAndLibraryChild(resolved)
+        try rejectShape(resolved)
         guard resolved.relative == lexical.relative else { throw .redirectedBySymlink }
 
         return ApprovedPath(url: URL(fileURLWithPath: "/" + resolvedComponents.joined(separator: "/")), text: text)
@@ -49,9 +54,7 @@ public struct PathGuard: Sendable {
 
     // MARK: Roots
 
-    private enum Root: CaseIterable {
-        case applications, library, config
-    }
+    private typealias Root = UninstallRoot
 
     private struct Placement {
         let root: Root
@@ -102,6 +105,15 @@ public struct PathGuard: Sendable {
     private func rejectRootAndLibraryChild(_ placement: Placement) throws(PathRejection) {
         if placement.relative.isEmpty { throw .isRoot }
         if placement.root == .library, placement.relative.count == 1 { throw .directChildOfLibrary }
+    }
+
+    private func rejectShape(_ placement: Placement) throws(PathRejection) {
+        switch UninstallPathShape.violation(root: placement.root, relative: placement.relative) {
+        case .insideAppBundle: throw .insideAppBundle
+        case .libraryFolderNotAllowed: throw .libraryFolderNotAllowed
+        case .notAnApplication: throw .notAnApplication
+        case nil: break
+        }
     }
 
     private func expandHome(in text: String) throws(PathRejection) -> String {

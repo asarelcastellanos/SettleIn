@@ -24,7 +24,8 @@ struct HostilePathGenerator {
         "Foo", "Foo.app", "FOO", "foo", "Foo ", "nest", "Application Support", "Caches",
         "..", ".", "", "...", "~", "*", "%2e%2e", "$HOME",
         "Café", "Cafe\u{301}", "日本語", "🙂", "a\nb", "nul\0byte",
-        "out", "inroot", "dangling", "out/new", "inroot/nest"
+        "out", "inroot", "dangling", "out/new", "inroot/nest",
+        "Keychains", "Utilities", "Foo.APP", "Bar.app", "Mobile Documents"
     ]
     private static let separators = ["/", "/", "/", "//", "///", "/./"]
     private static let endings = ["", "", "/", "//", "/."]
@@ -34,7 +35,9 @@ struct HostilePathGenerator {
         let lowerApps = sandbox.root.path + "/applications"
         prefixes = [
             "~/Library", "~/Library", "~/Library/Application Support", "~/.config", "~/.config",
-            apps, apps, apps + "-evil", sandbox.root.path + "/Applications2", lowerApps, apps.uppercased(),
+            "~/Library/Caches", "~/Library/Logs", "~/Library/Preferences", "~/.config/Foo", "~/.config/nest",
+            apps, apps, apps, apps + "/Foo.app", apps + "-evil", sandbox.root.path + "/Applications2", lowerApps,
+            apps.uppercased(),
             sandbox.home.path + "/Library", sandbox.home.path + "/.config", sandbox.home.path + "/Library-evil",
             sandbox.home.path + "/Library/Application Support", sandbox.home.path + "/Documents",
             "~/library", "~/.CONFIG", "~/Library-evil", "~/Documents", "~", "~root", "~/", "/", "", "//" + apps,
@@ -82,6 +85,32 @@ struct PathGuardPropertyTests {
             && Array(components.prefix(rootComponents.count)) == rootComponents
     }
 
+    /// An independent statement of the shape rules, written out here and not read from `UninstallPathShape`.
+    private func followsTheShapeRules(_ resolved: String, roots: [String]) -> Bool {
+        let libraryFolders: Set<String> = [
+            "Application Support", "Caches", "Preferences", "Logs", "Containers",
+            "Saved Application State", "HTTPStorages", "WebKit", "Cookies"
+        ]
+        let components = PathResolutionTestHelper.components(resolved)
+        func relative(to root: String) -> [String] {
+            Array(components.dropFirst(PathResolutionTestHelper.components(root).count))
+        }
+        func isApp(_ name: String) -> Bool { name.lowercased().hasSuffix(".app") }
+        if isInside(resolved, root: roots[0]) {
+            let below = relative(to: roots[0])
+            return below.count == 1 && isApp(below[0]) && below[0].count > 4
+        }
+        if isInside(resolved, root: roots[1]) {
+            let below = relative(to: roots[1])
+            return below.count >= 2 && libraryFolders.contains(below[0]) && !below.dropLast().contains(where: isApp)
+        }
+        if isInside(resolved, root: roots[2]) {
+            let below = relative(to: roots[2])
+            return below.count >= 1 && !below.dropLast().contains(where: isApp)
+        }
+        return false
+    }
+
     @Test func everyApprovedPathResolvesInsideARoot() throws {
         let sandbox = try UninstallSandbox.make()
         defer { sandbox.cleanUp() }
@@ -109,6 +138,7 @@ struct PathGuardPropertyTests {
             let direct = isInside(resolved, root: rootPaths[1]) && PathResolutionTestHelper.components(resolved).count
                 == PathResolutionTestHelper.components(rootPaths[1]).count + 1
             #expect(!direct, note)
+            #expect(followsTheShapeRules(resolved, roots: rootPaths), note)
         }
 
         #expect(approvedCount > 200, "seed \(Self.seed): only \(approvedCount) paths were approved")

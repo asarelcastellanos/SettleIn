@@ -4,9 +4,13 @@ import Foundation
 /// SettleIn never sees it. SettleIn watches for the app bundle and the package receipt, so
 /// `PackageInstallState.installing` is inferred, not read from Installer.app.
 public struct PackageInstaller: Sendable {
-    /// How long the installer waits for the install to finish before it reports `timedOut`.
+    /// How long the installer waits before it reports `timedOut`. The wait counts only the polls that find
+    /// Installer.app closed, so an open Installer window never times out.
     public static let defaultTimeout: Duration = .seconds(600)
     public static let pollInterval: Duration = .seconds(1)
+    /// The number of polls in a row that must find Installer.app closed before the installer decides. With the
+    /// bundle present, the install finished. With the bundle absent, the user cancelled.
+    public static let closedPollsBeforeVerdict = 3
 
     private enum Tool {
         static let open = URL(fileURLWithPath: "/usr/bin/open")
@@ -62,10 +66,12 @@ public struct PackageInstaller: Sendable {
             return .failed(.signature(failure))
         }
         if locator.applicationURL(forBundleID: app.bundleID) != nil { return .failed(.alreadyInstalled) }
+        // An old receipt does not prove that this run installed anything, so the poll needs to know about it.
+        let receiptBefore = await receiptExists(for: identifier)
         guard await openInstaller(with: package) else { return .failed(.installerDidNotOpen) }
 
         report(.waitingForUser)
-        return await poll(bundleID: app.bundleID, identifier: identifier, report: report)
+        return await poll(bundleID: app.bundleID, identifier: identifier, receiptBefore: receiptBefore, report: report)
     }
 
     private func openInstaller(with package: URL) async -> Bool {
@@ -73,31 +79,47 @@ public struct PackageInstaller: Sendable {
         return result?.exitCode == 0
     }
 
+    /// Looks once per interval. The app bundle, the receipt and Installer.app decide the result. The
+    /// already-installed check stops a run that starts with the bundle present, so a bundle that shows up during
+    /// the polls came from this run.
+    /// - The result is `installed` when the bundle exists and either the receipt is new since before the open, or
+    ///   Installer.app has been closed for `closedPollsBeforeVerdict` polls in a row.
+    /// - The result is `cancelled` after Installer.app and the bundle have both been absent for
+    ///   `closedPollsBeforeVerdict` polls in a row.
+    /// - The result is `timedOut` after `timeout` of polls that found Installer.app closed.
     private func poll(
         bundleID: BundleID,
         identifier: PackageIdentifier,
+        receiptBefore: Bool,
         report: @Sendable (PackageInstallState) -> Void
     ) async -> PackageInstallState {
-        var elapsed = Duration.zero
+        var closedTime = Duration.zero
+        var closedWithBundle = 0
+        var absentPolls = 0
         var announcedInstalling = false
         while !Task.isCancelled {
+            let installerRunning = monitor.isInstallerRunning()
             if locator.applicationURL(forBundleID: bundleID) != nil {
-                if await receiptExists(for: identifier) { return .installed }
+                absentPolls = 0
+                closedWithBundle = installerRunning ? 0 : closedWithBundle + 1
+                if !receiptBefore, await receiptExists(for: identifier) { return .installed }
+                if closedWithBundle >= Self.closedPollsBeforeVerdict { return .installed }
                 if !announcedInstalling {
                     announcedInstalling = true
                     report(.installing)
                 }
-            } else if elapsed > .zero && !monitor.isInstallerRunning() {
-                // The first poll skips this check so a slow Installer.app start is not read as a quit.
-                return .cancelled
+            } else {
+                closedWithBundle = 0
+                absentPolls = installerRunning ? 0 : absentPolls + 1
+                if absentPolls >= Self.closedPollsBeforeVerdict { return .cancelled }
             }
-            if elapsed >= timeout { return .failed(.timedOut) }
+            if !installerRunning && closedTime >= timeout { return .failed(.timedOut) }
             do {
                 try await clock.sleep(for: Self.pollInterval)
             } catch {
                 return .cancelled
             }
-            elapsed += Self.pollInterval
+            if !installerRunning { closedTime += Self.pollInterval }
         }
         return .cancelled
     }

@@ -14,6 +14,12 @@ public enum PathRejection: Error, Equatable, Sendable, CustomStringConvertible {
     case caseDiffersFromRoot
     case isRoot
     case directChildOfLibrary
+    /// A component other than the last ends in `.app`, so the path reaches into a bundle.
+    case insideAppBundle
+    /// The first folder below `~/Library` is not one that SettleIn removes from.
+    case libraryFolderNotAllowed
+    /// A path under `/Applications` is not `/Applications/<Name>.app`.
+    case notAnApplication
     /// The path is under a root as written, but its symlinks lead outside every root.
     case resolvesOutsideRoots
     /// A symlink sends the path to another place, even one inside a root. The uninstaller removes only
@@ -33,6 +39,11 @@ public enum PathRejection: Error, Equatable, Sendable, CustomStringConvertible {
         case .caseDiffersFromRoot: "the path differs from an allowed folder in letter case"
         case .isRoot: "the path is an allowed folder itself"
         case .directChildOfLibrary: "the path is a direct child of ~/Library"
+        case .insideAppBundle: "the path goes inside an .app bundle"
+        case .libraryFolderNotAllowed:
+            "the first folder below ~/Library is not one of Application Support, Caches, Preferences, Logs, "
+                + "Containers, Saved Application State, HTTPStorages, WebKit, or Cookies"
+        case .notAnApplication: "a path in /Applications must be /Applications/<Name>.app"
         case .resolvesOutsideRoots: "a symbolic link in the path leads outside the allowed folders"
         case .redirectedBySymlink: "a symbolic link in the path leads to a different place"
         case .unresolvable: "a part of the path could not be resolved"

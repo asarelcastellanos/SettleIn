@@ -37,15 +37,19 @@ private let everyFailure: [InstallFailure] = {
         .install(.appNotFound(name: "Fixture.app")),
         .install(.freeSpaceUnreadable(path: "/Applications")),
         .install(.notEnoughSpace(needed: 2_000_000_000, available: 1_000_000)),
+        .install(.bundleIDMismatch(expected: "com.example.Fixture")),
         .install(.differentAppAtDestination(path: "/Applications/Fixture.app")),
         .install(.replaceDeclined),
+        .install(.quitDeclined),
         .install(.appStillRunning),
         .install(.copyFailed(detail: "HOSTILE-DETAIL")),
         .package(.alreadyInstalled),
         .package(.notAPackageEntry),
         .package(.installerDidNotOpen),
         .package(.timedOut),
+        .uninstall(.quitDeclined),
         .uninstall(.appStillRunning),
+        .stillPresentAfterUninstall,
         .uninstallIncomplete(leftAlone: 1),
         .uninstallIncomplete(leftAlone: 3),
         .interrupted,
@@ -83,6 +87,13 @@ extension InstallStateTests {
             #expect(exit.tool == "pkgutil")
             #expect(exit.exitCode == 5)
             #expect(InstallFailure.interrupted.toolExit == nil)
+        }
+
+        @Test func theStillPresentMessageSaysWhatHappenedAndWhatToDo() {
+            let message = InstallFailure.stillPresentAfterUninstall.userMessage
+            #expect(message.contains("removed what the catalog lists"))
+            #expect(message.contains("still found the app"))
+            #expect(message.contains("by hand"))
         }
 
         @Test func engineErrorsMapToTheirOwnCase() {

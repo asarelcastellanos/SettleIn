@@ -21,7 +21,8 @@ extension SignatureVerifier {
     /// against the catalog, and a lowercase value comes back as written.
     public static func parseTeamIdentifier(codesignOutput: String) -> String? {
         let prefix = "TeamIdentifier="
-        let values = lines(of: codesignOutput).filter { $0.hasPrefix(prefix) }
+        guard let all = lines(of: codesignOutput) else { return nil }
+        let values = all.filter { $0.hasPrefix(prefix) }
         guard values.count == 1, let line = values.first else { return nil }
         let value = String(line.dropFirst(prefix.count))
         return isPlausibleTeamIdentifier(value) ? value : nil
@@ -29,7 +30,8 @@ extension SignatureVerifier {
 
     /// Reads the output of `pkgutil --check-signature`.
     public static func parsePackageSignature(pkgutilOutput: String) -> PackageSignature {
-        let trimmed = lines(of: pkgutilOutput).map { $0.trimmingCharacters(in: .whitespaces) }
+        guard let all = lines(of: pkgutilOutput) else { return .unrecognized }
+        let trimmed = all.map { $0.trimmingCharacters(in: .whitespaces) }
         let statusPrefix = "Status:"
         let statuses = trimmed.filter { $0.hasPrefix(statusPrefix) }
         guard statuses.count == 1, let line = statuses.first else { return .unrecognized }
@@ -39,8 +41,17 @@ extension SignatureVerifier {
         return .untrusted(status: status)
     }
 
-    private static func lines(of text: String) -> [String] {
-        text.split(whereSeparator: \.isNewline).map(String.init)
+    /// Line separators that `Character.isNewline` accepts and the tools never print. A path or a name inside
+    /// the output could carry one to forge a line, so output that holds one is not parsed at all.
+    private static let forgedLineSeparators: Set<Unicode.Scalar> = ["\u{2028}", "\u{2029}", "\u{85}"]
+
+    /// Splits the output on `\n` and drops one trailing `\r` from each line. Returns nil when the output holds
+    /// a separator in `forgedLineSeparators`, so the caller reports a failure and does not guess.
+    private static func lines(of text: String) -> [String]? {
+        guard !text.unicodeScalars.contains(where: forgedLineSeparators.contains) else { return nil }
+        return text.unicodeScalars.split(separator: "\n").map { line in
+            line.last == "\r" ? String(line.dropLast()) : String(line)
+        }
     }
 
     /// The Team ID in the first certificate of the chain, such as `1. Developer ID Installer: Name (TEAMID)`.

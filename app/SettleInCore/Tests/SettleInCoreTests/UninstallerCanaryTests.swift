@@ -15,7 +15,8 @@ extension UninstallerTests {
         try sandbox.makeSymlink(at: support.appendingPathComponent("Hostile/file-link"), to: sandbox.canary)
         try sandbox.makeSymlink(at: support.appendingPathComponent("EscapeLink"), to: sandbox.outside)
         try sandbox.makeSymlink(at: support.appendingPathComponent("UsersLink"), to: URL(fileURLWithPath: "/Users"))
-        try sandbox.makeSymlink(at: sandbox.config.appendingPathComponent("canary-link"), to: sandbox.canary)
+        try sandbox.makeFolder(sandbox.config.appendingPathComponent("tool"))
+        try sandbox.makeSymlink(at: sandbox.config.appendingPathComponent("tool/canary-link"), to: sandbox.canary)
         try sandbox.makeSymlink(
             at: sandbox.home.appendingPathComponent("Library/Caches"),
             to: sandbox.home.appendingPathComponent("Documents")
@@ -30,7 +31,7 @@ extension UninstallerTests {
         "~/Library/Application Support/UsersLink",
         "~/Library/Caches/canary.txt",
         "~/Library/Caches/Documents/canary.txt",
-        "~/.config/canary-link",
+        "~/.config/tool/canary-link",
         "/Applications/Other.app",
         "/Applications/Foo.app",
         "~/Library/Application Support/Missing/Deeper"
@@ -42,7 +43,7 @@ extension UninstallerTests {
         #expect(sandbox.exists(sandbox.applications.appendingPathComponent("Other.app")))
         #expect(sandbox.exists(sandbox.support.appendingPathComponent("EscapeLink")))
         #expect(sandbox.exists(sandbox.support.appendingPathComponent("UsersLink")))
-        #expect(sandbox.exists(sandbox.config.appendingPathComponent("canary-link")))
+        #expect(sandbox.exists(sandbox.config.appendingPathComponent("tool/canary-link")))
         #expect(FileManager.default.fileExists(atPath: "/Users"))
     }
 

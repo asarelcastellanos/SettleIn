@@ -40,43 +40,68 @@ actor PackageFakeRunner: CommandRunner {
     var toolNames: [String] { calls.map(\.tool) }
 }
 
-struct PackageFakeVerifier: PackageSignatureChecking {
-    let result: SignatureResult
+/// Answers with a fixed result and records the Team ID of each call, so a test can check that the installer
+/// passes the catalog's value.
+final class PackageFakeVerifier: PackageSignatureChecking, @unchecked Sendable {
+    private let result: SignatureResult
+    private let lock = NSLock()
+    private var teamIDs: [TeamID] = []
 
-    func verifyPackage(at package: URL, expecting expected: TeamID) async -> SignatureResult { result }
+    init(result: SignatureResult) { self.result = result }
+
+    var expectedTeamIDs: [TeamID] { lock.withLock { teamIDs } }
+
+    func verifyPackage(at package: URL, expecting expected: TeamID) async -> SignatureResult {
+        lock.withLock { teamIDs.append(expected) }
+        return result
+    }
 }
 
 /// Reports the app as installed once `appearsAfterChecks` lookups have returned nil. Nil means never.
+/// It records the bundle ID of every lookup.
 final class PackageFakeLocator: BundleLocator, @unchecked Sendable {
     private let lock = NSLock()
     private let appearsAfterChecks: Int?
     private var checks = 0
+    private var asked: [BundleID] = []
 
     init(appearsAfterChecks: Int?) { self.appearsAfterChecks = appearsAfterChecks }
 
     var checkCount: Int { lock.withLock { checks } }
+    var askedBundleIDs: [BundleID] { lock.withLock { asked } }
 
     func applicationURL(forBundleID bundleID: BundleID) -> URL? {
         lock.withLock {
             checks += 1
+            asked.append(bundleID)
             guard let appearsAfterChecks, checks > appearsAfterChecks else { return nil }
             return URL(fileURLWithPath: "/fixture/path/Some App.app")
         }
     }
 }
 
-/// Reports Installer.app as running for the first `runningChecks` calls, then as quit.
+/// Reports Installer.app as running for the first `runningChecks` calls, then as quit. With `script`, it
+/// reports the listed answers in order and then `afterScript` for every later call.
 final class PackageFakeMonitor: InstallerProcessMonitor, @unchecked Sendable {
     private let lock = NSLock()
-    private let runningChecks: Int
+    private let script: [Bool]
+    private let afterScript: Bool
     private var checks = 0
 
-    init(runningChecks: Int) { self.runningChecks = runningChecks }
+    init(runningChecks: Int) {
+        script = runningChecks == .max ? [] : Array(repeating: true, count: runningChecks)
+        afterScript = runningChecks == .max
+    }
+
+    init(script: [Bool], afterScript: Bool) {
+        self.script = script
+        self.afterScript = afterScript
+    }
 
     func isInstallerRunning() -> Bool {
         lock.withLock {
-            checks += 1
-            return checks <= runningChecks
+            defer { checks += 1 }
+            return checks < script.count ? script[checks] : afterScript
         }
     }
 }

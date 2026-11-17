@@ -27,7 +27,7 @@ struct PathGuardTests {
             sandbox.applications.path + "/Foo.app",
             "~/Library/Application Support/Foo",
             "~/Library/Caches/com.example.Foo/deep/file",
-            "~/.config/foo",
+            "~/.config/foo/settings.toml",
             sandbox.home.path + "/Library/Preferences/com.example.Foo.plist"
         ] {
             #expect(throws: Never.self) { try approved(text, in: sandbox) }
@@ -92,9 +92,9 @@ struct PathGuardTests {
     @Test func approvesAnUninstallPathFromTheCatalog() throws {
         let sandbox = try UninstallSandbox.make()
         defer { sandbox.cleanUp() }
-        let path = try UninstallPath("~/.config/foo")
+        let path = try UninstallPath("~/.config/foo/settings.toml")
         let result = try PathGuard(roots: sandbox.roots).approve(path)
-        #expect(result.text == "~/.config/foo")
+        #expect(result.text == "~/.config/foo/settings.toml")
     }
 
     @Test func approvesWhenARootOrTheHomeIsItselfASymlink() throws {
@@ -108,7 +108,7 @@ struct PathGuardTests {
         try sandbox.makeSymlink(at: homeLink, to: sandbox.home)
 
         let viaLink = PathGuard(roots: AllowedRoots(home: homeLink, applications: sandbox.applications))
-        #expect(throws: Never.self) { try viaLink.approve("~/.config/foo") }
+        #expect(throws: Never.self) { try viaLink.approve("~/.config/foo/settings.toml") }
         #expect(throws: Never.self) { try viaLink.approve("~/Library/Application Support/Foo") }
     }
 
@@ -197,13 +197,14 @@ struct PathGuardTests {
         let sandbox = try UninstallSandbox.make()
         defer { sandbox.cleanUp() }
         try sandbox.makeSymlink(at: sandbox.support.appendingPathComponent("Out"), to: sandbox.outside)
-        try sandbox.makeSymlink(at: sandbox.config.appendingPathComponent("file"), to: sandbox.canary)
+        try sandbox.makeFolder(sandbox.config.appendingPathComponent("tool"))
+        try sandbox.makeSymlink(at: sandbox.config.appendingPathComponent("tool/file"), to: sandbox.canary)
         try sandbox.makeSymlink(at: sandbox.applications.appendingPathComponent("Evil.app"), to: sandbox.outside)
         for text in [
             "~/Library/Application Support/Out",
             "~/Library/Application Support/Out/canary.txt",
             "~/Library/Application Support/Out/new-file",
-            "~/.config/file",
+            "~/.config/tool/file",
             sandbox.applications.path + "/Evil.app"
         ] {
             #expect(rejection(text, in: sandbox) == .resolvesOutsideRoots, "\(text)")

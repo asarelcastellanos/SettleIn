@@ -33,6 +33,7 @@ extension IntegrationTests {
             let verified = await checker.verifiedPaths
             #expect(verified.count == 1)
             #expect(verified.allSatisfy { $0.contains("SettleIn-install-") && !$0.contains("/mnt/") })
+            #expect(await checker.expectedTeamIDs == [app.teamID])
             #expect(world.leftovers.isEmpty)
             #expect(await eventually { states.names(of: app.id).last == "installed" })
             #expect(collapsed(states.names(of: app.id)) == ["downloading", "verifying", "installing", "installed"])

@@ -5,7 +5,7 @@
 #
 # The output directory must not exist yet or must be empty. The script creates it when it is missing.
 # It writes Fixture.app, Fixture.dmg, Fixture.zip, and Fixture.pkg there. The app is ad hoc signed, so it
-# has no Team ID. The package is unsigned. Nothing here runs sudo, installs anything, or reads the
+# has no Team ID. The package is unsigned. Nothing here needs a password, installs anything, or reads the
 # real /Applications folder. The repository holds no binary fixtures, so each run builds them again.
 
 set -euo pipefail

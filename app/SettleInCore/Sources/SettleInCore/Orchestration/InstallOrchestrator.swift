@@ -27,8 +27,15 @@ public enum OperationOutcome: Equatable, Sendable {
 /// copy before it copies anything into the destination. A pkg goes to `PackageInstaller`, which verifies
 /// the package signature before it opens Installer.app. Neither installer reports the signature result
 /// early, so the orchestrator records `verifying` for the whole call and moves to `installing` only after
-/// the installer reports that verification passed. The reducer has no event from `downloading` to
-/// `installing`, so no install reaches `installing` without `verifying`.
+/// the installer reports that verification passed. The row text for a dmg or zip says "Checking and
+/// installing" during `verifying`, because the installer checks the signature and copies the app inside its
+/// call. The row text for a pkg says "Waiting for Installer" during `installing`, because SettleIn polls for
+/// the app while Installer.app works. The reducer has no event from `downloading` to `installing`, so no
+/// install reaches `installing` without `verifying`.
+///
+/// A question that the user answers with no, such as replacing an app or quitting it, ends the operation
+/// with the `declined` event, and no failure shows. An uninstall returns to `installed`. An install returns to
+/// `idle`, and then the orchestrator asks the locator, so an app that is already installed shows as installed.
 public actor InstallOrchestrator {
     private let downloader: any AppDownloading
     private let appInstaller: any AppInstalling
@@ -41,7 +48,13 @@ public actor InstallOrchestrator {
 
     private var states: [String: InstallState] = [:]
     private var logs: [String: OperationLog] = [:]
-    private var tasks: [String: Task<Void, Never>] = [:]
+    private var runs: [String: Run] = [:]
+
+    /// One running operation. The token tells a finished run apart from a newer run on the same app.
+    private struct Run {
+        let token: UUID
+        let task: Task<Void, Never>
+    }
 
     /// Every state change in order. One reader should consume it.
     public nonisolated let stateChanges: AsyncStream<StateChange>
@@ -102,7 +115,7 @@ public actor InstallOrchestrator {
     public func cancel(appID: String) {
         guard case .downloading = state(of: appID) else { return }
         record(appID, "cancel requested")
-        tasks[appID]?.cancel()
+        runs[appID]?.task.cancel()
     }
 
     private func runInstall(_ app: CatalogApp) async {
@@ -120,7 +133,7 @@ public actor InstallOrchestrator {
             record(app.id, Self.describe(integrity))
             if state(of: app.id).isBusy { fail(app.id, .interrupted) }
         } catch {
-            conclude(app.id, error: error)
+            conclude(app, error: error)
         }
     }
 
@@ -146,7 +159,17 @@ public actor InstallOrchestrator {
     ) async throws {
         record(app.id, "AppInstaller: verify the staged copy of \(appName.rawValue), then install it")
         let target = InstallTarget(appName: appName, bundleID: app.bundleID, teamID: app.teamID)
-        let installed = try await appInstaller.install(archive: file, kind: kind, app: target)
+        let notes = InstallNotes()
+        let installed: URL
+        do {
+            installed = try await appInstaller.install(
+                archive: file, kind: kind, app: target, report: { notes.add($0) }
+            )
+        } catch {
+            recordNotes(notes, for: app.id)
+            throw error
+        }
+        recordNotes(notes, for: app.id)
         record(app.id, "installed at \(installed.path)")
         apply(.verified, to: app.id)
         apply(.installFinished, to: app.id)
@@ -196,12 +219,23 @@ public actor InstallOrchestrator {
             }
             if leftAlone > 0 {
                 fail(app.id, .uninstallIncomplete(leftAlone: leftAlone))
+            } else if let remaining = installedCopy(of: app) {
+                record(app.id, "the app is still at \(remaining.path)")
+                fail(app.id, .stillPresentAfterUninstall)
             } else {
                 apply(.uninstallFinished, to: app.id)
             }
         } catch {
-            conclude(app.id, error: error)
+            conclude(app, error: error)
         }
+    }
+
+    /// The copy of the app that LaunchServices still reports after an uninstall. A path that is gone, and a
+    /// path inside a Trash folder, do not count.
+    private func installedCopy(of app: CatalogApp) -> URL? {
+        guard let url = locator.applicationURL(forBundleID: app.bundleID) else { return nil }
+        let inTrash = url.pathComponents.contains { $0 == ".Trash" || $0 == ".Trashes" }
+        return !inTrash && FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
     // MARK: Shared steps
@@ -214,17 +248,35 @@ public actor InstallOrchestrator {
         return current.reduce(event) == current ? .notAllowedInCurrentState : nil
     }
 
+    /// Waits for the task. A cancel followed at once by a new request lets the new run register before this
+    /// call resumes, so the run is cleared only when its token is still the registered one.
     private func finish(_ task: Task<Void, Never>, for appID: String) async -> OperationOutcome {
-        tasks[appID] = task
+        let token = UUID()
+        runs[appID] = Run(token: token, task: task)
         await task.value
-        tasks[appID] = nil
+        if runs[appID]?.token == token { runs[appID] = nil }
         return .completed(state(of: appID))
     }
 
-    private func conclude(_ appID: String, error: any Error) {
+    private func recordNotes(_ notes: InstallNotes, for appID: String) {
+        for note in notes.drain() { record(appID, "AppInstaller: \(note)") }
+    }
+
+    private func conclude(_ app: CatalogApp, error: any Error) {
+        let appID = app.id
         if error is CancellationError {
             record(appID, "cancelled")
             apply(.cancelled, to: appID)
+            return
+        }
+        if isDecline(error) {
+            record(appID, "declined by the user")
+            apply(.declined, to: appID)
+            // A declined install returns to idle, so ask the locator whether the app is already installed.
+            if state(of: appID) == .idle, let found = installedCopy(of: app) {
+                record(appID, "the app is installed at \(found.path)")
+                apply(.appFound, to: appID)
+            }
             return
         }
         if InstallFailure.from(error) == .unexpected {
@@ -282,5 +334,24 @@ public actor InstallOrchestrator {
         case .skipped: "nothing found at \(item.path)"
         case .refused(let reason): "left alone: \(item.path) (\(reason))"
         }
+    }
+}
+
+/// Collects the notes that `AppInstaller` reports during one call. The installer calls it from its own tasks,
+/// and the orchestrator reads it after the call returns.
+private final class InstallNotes: @unchecked Sendable {
+    private let lock = NSLock()
+    private var notes: [String] = []
+
+    func add(_ note: String) { lock.withLock { notes.append(note) } }
+
+    func drain() -> [String] { lock.withLock { defer { notes = [] }; return notes } }
+}
+
+/// True when the user answered no to a question that the installer or the uninstaller asked.
+private func isDecline(_ error: any Error) -> Bool {
+    switch error {
+    case InstallError.replaceDeclined, InstallError.quitDeclined, UninstallError.quitDeclined: true
+    default: false
     }
 }

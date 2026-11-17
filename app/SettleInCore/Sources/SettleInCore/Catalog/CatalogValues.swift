@@ -98,11 +98,15 @@ public struct AllowedHost: Hashable, Sendable, CustomStringConvertible {
     }
 }
 
-/// A path that the uninstaller may remove. It starts with `/Applications/`, `~/Library/`, or `~/.config/`.
-/// This type checks the catalog text only. It does not touch the file system.
+/// A path that the uninstaller may remove. It starts with `/Applications/`, `~/Library/`, or `~/.config/`, and
+/// it follows the shape rules in `UninstallPathShape`. This type checks the catalog text only. It does not
+/// touch the file system.
 public struct UninstallPath: Hashable, Sendable, CustomStringConvertible {
     public let rawValue: String
     public var description: String { rawValue }
+
+    /// True for `/Applications/<Name>.app`, the only form the shape rules allow under `/Applications`.
+    var isApplicationsApp: Bool { rawValue.hasPrefix("/Applications/") }
 
     init(_ raw: String) throws {
         let scalars = raw.unicodeScalars
@@ -111,16 +115,21 @@ public struct UninstallPath: Hashable, Sendable, CustomStringConvertible {
         let components = raw.split(separator: "/", omittingEmptySubsequences: false)
         if components.contains("..") { throw UninstallPathRule.containsParentTraversal }
 
-        let roots = ["/Applications", "~/Library", "~/.config"]
-        if roots.contains(raw) { throw UninstallPathRule.isRoot }
-        guard let root = roots.first(where: { raw.hasPrefix($0 + "/") }) else {
+        let roots: [(prefix: String, root: UninstallRoot)] = [
+            ("/Applications", .applications), ("~/Library", .library), ("~/.config", .config)
+        ]
+        if roots.contains(where: { $0.prefix == raw }) { throw UninstallPathRule.isRoot }
+        guard let match = roots.first(where: { raw.hasPrefix($0.prefix + "/") }) else {
             throw UninstallPathRule.outsideAllowedRoots
         }
 
-        let relative = raw.dropFirst(root.count + 1).split(separator: "/", omittingEmptySubsequences: false)
+        let relative = raw.dropFirst(match.prefix.count + 1).split(separator: "/", omittingEmptySubsequences: false)
         let hasControl = scalars.contains { $0.value < 0x20 || $0.value == 0x7F }
         if hasControl || relative.contains(where: { $0.isEmpty || $0 == "." }) { throw UninstallPathRule.malformed }
-        if root == "~/Library", relative.count < 2 { throw UninstallPathRule.directChildOfLibrary }
+        if match.root == .library, relative.count < 2 { throw UninstallPathRule.directChildOfLibrary }
+        if let violation = UninstallPathShape.violation(root: match.root, relative: relative.map(String.init)) {
+            throw UninstallPathRule(violation)
+        }
         rawValue = raw
     }
 }

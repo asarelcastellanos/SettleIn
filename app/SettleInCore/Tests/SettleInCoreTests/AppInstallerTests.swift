@@ -25,6 +25,7 @@ struct AppInstallerTests {
         let verified = await checker.verifiedPaths
         #expect(verified.count == 1)
         #expect(verified.allSatisfy { $0.contains("SettleIn-install-") && !$0.contains("/mnt/") })
+        #expect(await checker.expectedTeamIDs == [teamID("ABCDE12345")])
         #expect(sandbox.entries(in: sandbox.temporaryRoot).isEmpty)
         await sandbox.cleanUp()
     }
@@ -202,7 +203,7 @@ struct AppInstallerTests {
 
     // MARK: Running app
 
-    @Test func refusingToQuitFailsWithAppStillRunning() async throws {
+    @Test func refusingToQuitFailsWithQuitDeclined() async throws {
         let sandbox = try InstallSandbox.make()
         let archive = try await sandbox.makeZip()
         let running = FakeRunningApps(running: true)
@@ -213,7 +214,7 @@ struct AppInstallerTests {
 
         let error = await installFailure { try await installer.install(archive: archive, kind: .zip, app: target) }
 
-        #expect(error == .appStillRunning)
+        #expect(error == .quitDeclined)
         #expect(quitCounter.timesCalled == 1)
         #expect(running.terminateTimeouts.isEmpty)
         #expect(sandbox.entries(in: sandbox.destination).isEmpty)

@@ -16,9 +16,15 @@ public enum InstallError: Error, Equatable, Sendable, LocalizedError {
     case freeSpaceUnreadable(path: String)
     case notEnoughSpace(needed: Int64, available: Int64)
     case signatureInvalid(SignatureFailure)
+    /// The signature of the staged copy is valid, but its `CFBundleIdentifier` is not the catalog bundle ID.
+    case bundleIDMismatch(expected: String)
     /// An app with the same file name but another bundle ID is already at the destination.
     case differentAppAtDestination(path: String)
+    /// The user answered no when asked to replace the installed app.
     case replaceDeclined
+    /// The user answered no when asked to quit the running app.
+    case quitDeclined
+    /// The app did not quit, or it was still running after the wait.
     case appStillRunning
     case copyFailed(detail: String)
 
@@ -48,10 +54,15 @@ public enum InstallError: Error, Equatable, Sendable, LocalizedError {
             return "The install needs \(format(needed)) of free space, and the volume has \(format(available))."
         case .signatureInvalid(let failure):
             return failure.reason
+        case .bundleIDMismatch(let expected):
+            return "The app in the archive does not have the bundle ID \(expected) that the catalog names. "
+                + "SettleIn installed nothing."
         case .differentAppAtDestination(let path):
             return "A different app is already at \(path). SettleIn left it alone."
         case .replaceDeclined:
             return "The existing app was not replaced."
+        case .quitDeclined:
+            return "The app is running and was not asked to quit, so SettleIn did not replace it."
         case .appStillRunning:
             return "The app is still running, so SettleIn did not replace it. Quit the app and try again."
         case .copyFailed(let detail):

@@ -51,10 +51,15 @@ extension InstallError {
             "The install needs \(Self.size(needed)) of free space, and the volume has \(Self.size(available))."
         case .signatureInvalid(let failure):
             failure.message
+        case .bundleIDMismatch(let expected):
+            "The app in the archive does not have the bundle ID \(expected) that the catalog names, "
+                + "so SettleIn installed nothing."
         case .differentAppAtDestination(let path):
             "A different app is already at \(path), so SettleIn left it alone."
         case .replaceDeclined:
             "The existing app was not replaced."
+        case .quitDeclined:
+            "The app is running and was not asked to quit, so SettleIn did not replace it."
         case .appStillRunning:
             "The app is still running, so SettleIn did not replace it. Quit the app and try again."
         case .copyFailed:
@@ -110,6 +115,8 @@ extension PackageInstallFailure {
 extension UninstallError {
     var message: String {
         switch self {
+        case .quitDeclined:
+            "The app is running and was not asked to quit, so SettleIn removed nothing."
         case .appStillRunning:
             "The app is still running, so SettleIn removed nothing. Quit the app and try again."
         }

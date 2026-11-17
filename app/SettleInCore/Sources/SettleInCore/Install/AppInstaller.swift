@@ -1,5 +1,9 @@
 import Foundation
 
+/// Receives a short note about something that went wrong after the install result was settled, such as a disk
+/// image that would not detach. A note never changes the result of the install.
+public typealias InstallReport = @Sendable (String) -> Void
+
 /// Installs a verified `.app` from a downloaded dmg or zip.
 ///
 /// The installer unpacks the archive into a private directory, copies the app to a staging folder there,
@@ -52,17 +56,29 @@ public struct AppInstaller: Sendable {
     /// image are gone when this returns or throws.
     @discardableResult
     public func install(archive: URL, kind: InstallKind, app: InstallTarget) async throws -> URL {
+        try await install(archive: archive, kind: kind, app: app, report: nil)
+    }
+
+    /// Same as `install(archive:kind:app:)`. `report` receives a note when the installer cannot detach the disk
+    /// image or cannot remove its working folder. The notes never change what this method returns or throws.
+    @discardableResult
+    public func install(
+        archive: URL,
+        kind: InstallKind,
+        app: InstallTarget,
+        report: InstallReport?
+    ) async throws -> URL {
         try requireWritableDestination()
         let installed = destination.appendingPathComponent(app.appName.rawValue, isDirectory: true)
         let replacing = try existingApp(at: installed, matches: app.bundleID)
 
         let work = try makeWorkingDirectory()
-        defer { try? FileManager.default.removeItem(at: work) }
+        defer { removeWorkingDirectory(work, report: report) }
 
         let staged: URL
         switch kind {
         case .dmg:
-            let mounter = DiskImageMounter(runner: runner, attachTimeout: attachTimeout)
+            let mounter = DiskImageMounter(runner: runner, attachTimeout: attachTimeout, report: report)
             staged = try await mounter.withMount(of: archive, in: work) { mount in
                 try await stageVerifiedCopy(of: app, from: mount, in: work)
             }
@@ -76,7 +92,7 @@ public struct AppInstaller: Sendable {
             guard await confirmReplace(app) else { throw InstallError.replaceDeclined }
         }
         try await quitIfRunning(app)
-        try await place(staged, at: installed, replacing: replacing)
+        try await place(staged, at: installed, replacing: replacing, bundleID: app.bundleID)
         return installed
     }
 
@@ -93,20 +109,20 @@ public struct AppInstaller: Sendable {
     /// Returns true when an app with the catalog bundle ID is at `path`. Throws when anything else is there.
     /// A symbolic link, a plain file, and a bundle without a readable identifier all count as another app.
     private func existingApp(at path: URL, matches bundleID: BundleID) throws -> Bool {
-        let manager = FileManager.default
-        guard let type = try? manager.attributesOfItem(atPath: path.path)[.type] as? FileAttributeType else {
-            return false
-        }
-        let plist = path.appendingPathComponent("Contents/Info.plist")
-        guard
-            type == .typeDirectory,
-            let data = try? Data(contentsOf: plist),
-            let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-            info["CFBundleIdentifier"] as? String == bundleID.rawValue
-        else {
+        guard (try? FileManager.default.attributesOfItem(atPath: path.path)) != nil else { return false }
+        guard BundleInfo.identifier(ofAppAt: path) == bundleID.rawValue else {
             throw InstallError.differentAppAtDestination(path: path.path)
         }
         return true
+    }
+
+    /// Removes the private directory. A failure goes to `report`, because the install result does not depend on it.
+    private func removeWorkingDirectory(_ work: URL, report: InstallReport?) {
+        do {
+            try FileManager.default.removeItem(at: work)
+        } catch {
+            report?("SettleIn could not remove its working folder \(work.path)")
+        }
     }
 
     private func makeWorkingDirectory() throws -> URL {
@@ -133,7 +149,8 @@ public struct AppInstaller: Sendable {
     }
 
     /// Finds the app in `folder`, checks the free space, copies the app into the private directory, and
-    /// verifies that copy. Returns the copy, which is the only thing that goes on to the destination.
+    /// verifies that copy. The signature must be valid and the bundle ID of the copy must equal the catalog
+    /// bundle ID. Returns the copy, which is the only thing that goes on to the destination.
     private func stageVerifiedCopy(of target: InstallTarget, from folder: URL, in work: URL) async throws -> URL {
         let source = folder.appendingPathComponent(target.appName.rawValue, isDirectory: true)
         let type = try? FileManager.default.attributesOfItem(atPath: source.path)[.type] as? FileAttributeType
@@ -153,18 +170,23 @@ public struct AppInstaller: Sendable {
         try await copy(source, to: staged)
 
         switch await signatureChecker.verifyApp(at: staged, expecting: target.teamID) {
-        case .valid: return staged
-        case .invalid(let failure): throw InstallError.signatureInvalid(failure)
+        case .valid:
+            guard BundleInfo.identifier(ofAppAt: staged) == target.bundleID.rawValue else {
+                throw InstallError.bundleIDMismatch(expected: target.bundleID.rawValue)
+            }
+            return staged
+        case .invalid(let failure):
+            throw InstallError.signatureInvalid(failure)
         }
     }
 
     // MARK: Placement
 
     /// Asks the app to quit when it is running. The installer never forces it. A refusal, a failed quit, and
-    /// an app that is still running after the wait all end the install.
+    /// an app that is still running after the wait all end the install. A refusal ends it with `quitDeclined`.
     private func quitIfRunning(_ target: InstallTarget) async throws {
         guard runningApps.isRunning(bundleID: target.bundleID) else { return }
-        guard await confirmQuit(target) else { throw InstallError.appStillRunning }
+        guard await confirmQuit(target) else { throw InstallError.quitDeclined }
         guard await runningApps.terminate(bundleID: target.bundleID, timeout: quitTimeout) else {
             throw InstallError.appStillRunning
         }
@@ -172,13 +194,19 @@ public struct AppInstaller: Sendable {
 
     /// Copies `staged` to a hidden name in the destination folder, then moves it into place. A reader never
     /// sees a half-copied app at the final path, and the hidden copy is removed on every exit path.
-    private func place(_ staged: URL, at installed: URL, replacing: Bool) async throws {
+    ///
+    /// The user confirmed the replace and the copy took time, so the destination is read again right before
+    /// the move. It must still hold the catalog app, or nothing. An app that appeared after the first look was
+    /// never confirmed, so it ends the install the same way as a different app.
+    private func place(_ staged: URL, at installed: URL, replacing: Bool, bundleID: BundleID) async throws {
         let manager = FileManager.default
         let pending = destination.appendingPathComponent(".SettleIn-pending-\(UUID().uuidString)", isDirectory: true)
         defer { try? manager.removeItem(at: pending) }
         try await copy(staged, to: pending)
+        let stillThere = try existingApp(at: installed, matches: bundleID)
+        if stillThere && !replacing { throw InstallError.differentAppAtDestination(path: installed.path) }
         do {
-            if replacing {
+            if stillThere {
                 _ = try manager.replaceItemAt(installed, withItemAt: pending)
             } else {
                 try manager.moveItem(at: pending, to: installed)

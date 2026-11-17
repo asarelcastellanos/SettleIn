@@ -23,6 +23,7 @@ private extension InstallEvent {
         case .verified: "verified"
         case .installFinished: "installFinished"
         case .uninstallFinished: "uninstallFinished"
+        case .declined: "declined"
         case .cancelled: "cancelled"
         case .failed: "failed"
         }
@@ -35,7 +36,7 @@ private let allStates: [InstallState] = [
 ]
 private let allEvents: [InstallEvent] = [
     .installRequested, .uninstallRequested, .appFound, .downloadProgressed(fraction: 0.9), .downloadFinished,
-    .verified, .installFinished, .uninstallFinished, .cancelled, .failed(failure)
+    .verified, .installFinished, .uninstallFinished, .declined, .cancelled, .failed(failure)
 ]
 
 /// The complete list of valid transitions. A pair that is not listed here must leave the state unchanged.
@@ -54,11 +55,13 @@ private let validTransitions: [Transition] = [
     Transition(from: .downloading(progress: 0.5), event: .failed(failure), result: .failed(failure)),
     Transition(from: .verifying, event: .verified, result: .installing),
     Transition(from: .verifying, event: .cancelled, result: .idle),
+    Transition(from: .verifying, event: .declined, result: .idle),
     Transition(from: .verifying, event: .failed(failure), result: .failed(failure)),
     Transition(from: .installing, event: .installFinished, result: .installed),
     Transition(from: .installing, event: .cancelled, result: .idle),
     Transition(from: .installing, event: .failed(failure), result: .failed(failure)),
     Transition(from: .uninstalling, event: .uninstallFinished, result: .idle),
+    Transition(from: .uninstalling, event: .declined, result: .installed),
     Transition(from: .uninstalling, event: .failed(failure), result: .failed(failure))
 ]
 
@@ -83,6 +86,20 @@ struct InstallStateTests {
     @Test func installRequestWhileDownloadingLeavesTheStateUnchanged() {
         let state = InstallState.downloading(progress: 0.25)
         #expect(state.reduce(.installRequested) == state)
+    }
+
+    // MARK: Declined
+
+    @Test func aDeclinedInstallReturnsToIdleAndAnUninstallReturnsToInstalled() {
+        #expect(InstallState.verifying.reduce(.declined) == .idle)
+        #expect(InstallState.uninstalling.reduce(.declined) == .installed)
+    }
+
+    @Test func declinedChangesNoOtherState() {
+        let others: [InstallState] = [.idle, .downloading(progress: 0.5), .installing, .installed, .failed(failure)]
+        for state in others {
+            #expect(state.reduce(.declined) == state, "\(state.name) + declined changed the state")
+        }
     }
 
     // MARK: Verification gate

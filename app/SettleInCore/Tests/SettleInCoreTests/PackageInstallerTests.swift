@@ -40,58 +40,187 @@ struct PackageInstallerTests {
         let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
 
         #expect(states == [.waitingForUser, .installing, .installed])
-        #expect(await runner.toolNames.first == "open")
+        #expect(await runner.toolNames.prefix(2) == ["pkgutil", "open"], "the receipt is read before the open")
     }
 
     @Test func installerOpensWithAnArgumentListAndNoShell() async {
-        let runner = PackageFakeRunner()
+        let runner = PackageFakeRunner(receiptAfterChecks: 1)
         let subject = installer(runner: runner, locator: PackageFakeLocator(appearsAfterChecks: 1))
 
         _ = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
 
         let calls = await runner.calls
-        #expect(calls.first == PackageFakeRunner.Call(
+        #expect(calls.first?.arguments == ["--pkg-info", "com.example.Some.pkg"])
+        #expect(calls.dropFirst().first == PackageFakeRunner.Call(
             tool: "open",
             arguments: ["-a", "/System/Library/CoreServices/Installer.app", "/fixture/path/Some.pkg"]
         ))
-        #expect(calls.dropFirst().first?.arguments == ["--pkg-info", "com.example.Some.pkg"])
+        #expect(calls.dropFirst(2).first?.arguments == ["--pkg-info", "com.example.Some.pkg"])
     }
 
-    @Test func installerQuittingWithNoBundleEmitsCancelled() async {
-        let runner = PackageFakeRunner()
+    @Test func installerQuittingWithNoBundleEmitsCancelledAfterThreeAbsentPolls() async {
+        let clock = PackageFakeClock()
         let subject = installer(
-            runner: runner, locator: PackageFakeLocator(appearsAfterChecks: nil),
-            monitor: PackageFakeMonitor(runningChecks: 3)
+            runner: PackageFakeRunner(), locator: PackageFakeLocator(appearsAfterChecks: nil),
+            monitor: PackageFakeMonitor(runningChecks: 3), clock: clock
         )
 
         let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
 
         #expect(states == [.waitingForUser, .cancelled])
+        #expect(clock.sleepCount == 5, "three polls with Installer.app running, then three without")
     }
 
-    @Test func missingBundleEmitsTimedOutAtTheTimeoutOnTheFakeClock() async {
+    @Test func installerThatAppearsLateIsNotTakenForACancel() async {
+        // Closed, closed, open, open, then closed for good. Two absent polls are not enough, and the count restarts
+        // when Installer.app shows up.
         let clock = PackageFakeClock()
         let subject = installer(
             runner: PackageFakeRunner(), locator: PackageFakeLocator(appearsAfterChecks: nil),
-            clock: clock, timeout: .seconds(600)
+            monitor: PackageFakeMonitor(script: [false, false, true, true], afterScript: false), clock: clock
         )
 
         let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
 
-        #expect(states == [.waitingForUser, .failed(.timedOut)])
-        #expect(clock.totalSlept == .seconds(600))
-        #expect(clock.sleepCount == 600)
+        #expect(states == [.waitingForUser, .cancelled])
+        #expect(clock.sleepCount == 6)
     }
 
-    @Test func bundleWithoutReceiptEmitsTimedOutAfterInstalling() async {
+    @Test func installerThatKeepsReopeningEmitsTimedOutAfterTheClosedPollsAddUp() async {
+        // Closed twice, then open, again and again. Three closed polls never come in a row, so only the timeout
+        // can end the run. The eleventh closed poll is poll 16, and it ends the run.
+        let clock = PackageFakeClock()
+        let script = Array(repeating: [false, false, true], count: 10).flatMap { $0 }
         let subject = installer(
-            runner: PackageFakeRunner(receiptAfterChecks: nil),
-            locator: PackageFakeLocator(appearsAfterChecks: 1), timeout: .seconds(5)
+            runner: PackageFakeRunner(), locator: PackageFakeLocator(appearsAfterChecks: 1),
+            monitor: PackageFakeMonitor(script: script, afterScript: true), clock: clock, timeout: .seconds(10)
         )
 
         let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
 
         #expect(states == [.waitingForUser, .installing, .failed(.timedOut)])
+        #expect(clock.sleepCount == 15)
+    }
+
+    @Test func timeoutNeverFiresWhileInstallerIsOpen() async {
+        // Installer.app stays open for 100 polls, which would pass the 5 second timeout if open polls counted.
+        // After it closes, three closed polls in a row end the run as installed.
+        let clock = PackageFakeClock()
+        let subject = installer(
+            runner: PackageFakeRunner(), locator: PackageFakeLocator(appearsAfterChecks: 1),
+            monitor: PackageFakeMonitor(runningChecks: 100), clock: clock, timeout: .seconds(5)
+        )
+
+        let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
+
+        #expect(states == [.waitingForUser, .installing, .installed])
+        #expect(clock.sleepCount == 102)
+    }
+
+    @Test func installerThatReopensIsNotTimedOutWhileItIsOpen() async {
+        // Five closed polls use the whole timeout, but no three come in a row. Poll 8 finds Installer.app open
+        // again, and the run goes on. Poll 9 finds it closed and reports timedOut.
+        let clock = PackageFakeClock()
+        let script = [false, false, true, false, false, true, false, true, false]
+        let subject = installer(
+            runner: PackageFakeRunner(), locator: PackageFakeLocator(appearsAfterChecks: 1),
+            monitor: PackageFakeMonitor(script: script, afterScript: true), clock: clock, timeout: .seconds(5)
+        )
+
+        let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
+
+        #expect(states == [.waitingForUser, .installing, .failed(.timedOut)])
+        #expect(clock.sleepCount == 8)
+    }
+
+    // MARK: Installer closed with the bundle present
+
+    @Test func bundleWithoutReceiptEmitsInstalledAfterInstallerStaysClosedForThreePolls() async {
+        let clock = PackageFakeClock()
+        let subject = installer(
+            runner: PackageFakeRunner(receiptAfterChecks: nil),
+            locator: PackageFakeLocator(appearsAfterChecks: 1),
+            monitor: PackageFakeMonitor(runningChecks: 0), clock: clock, timeout: .seconds(5)
+        )
+
+        let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
+
+        #expect(states == [.waitingForUser, .installing, .installed])
+        #expect(clock.sleepCount == 2)
+    }
+
+    @Test func twoClosedPollsWithTheBundlePresentAreNotEnough() async {
+        // Closed, closed, open, then closed for good. The count restarts when Installer.app shows up.
+        let clock = PackageFakeClock()
+        let subject = installer(
+            runner: PackageFakeRunner(receiptAfterChecks: nil),
+            locator: PackageFakeLocator(appearsAfterChecks: 1),
+            monitor: PackageFakeMonitor(script: [false, false, true], afterScript: false), clock: clock
+        )
+
+        let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
+
+        #expect(states == [.waitingForUser, .installing, .installed])
+        #expect(clock.sleepCount == 5)
+    }
+
+    // MARK: Receipt that existed before the run
+
+    @Test func aNewReceiptEndsTheRunWhileInstallerIsStillOpen() async {
+        let clock = PackageFakeClock()
+        let subject = installer(
+            runner: PackageFakeRunner(receiptAfterChecks: 1),
+            locator: PackageFakeLocator(appearsAfterChecks: 1), clock: clock
+        )
+
+        let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
+
+        #expect(states == [.waitingForUser, .installed])
+        #expect(clock.sleepCount == 0)
+    }
+
+    @Test func anOldReceiptDoesNotEndTheRunWhileInstallerIsOpen() async {
+        let clock = PackageFakeClock()
+        let subject = installer(
+            runner: PackageFakeRunner(receiptAfterChecks: 0),
+            locator: PackageFakeLocator(appearsAfterChecks: 1),
+            monitor: PackageFakeMonitor(runningChecks: 4), clock: clock
+        )
+
+        let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
+
+        #expect(states == [.waitingForUser, .installing, .installed])
+        #expect(clock.sleepCount == 6, "four polls with Installer.app open, then three closed polls")
+    }
+
+    @Test func anInstallerThatFinishedBeforeTheFirstPollStillEndsInstalled() async {
+        let subject = installer(
+            runner: PackageFakeRunner(receiptAfterChecks: 0),
+            locator: PackageFakeLocator(appearsAfterChecks: 1),
+            monitor: PackageFakeMonitor(runningChecks: 0), timeout: .seconds(5)
+        )
+
+        let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
+
+        #expect(states == [.waitingForUser, .installing, .installed])
+    }
+
+    // MARK: What the installer asks for
+
+    @Test func theInstallerAsksForTheCatalogBundleIDAndTeamID() async {
+        let verifier = PackageFakeVerifier(result: .valid(teamID("EQHXZ8M8AV")))
+        let locator = PackageFakeLocator(appearsAfterChecks: 2)
+        let app = packageCatalogApp()
+        let subject = installer(
+            verifier: verifier, runner: PackageFakeRunner(receiptAfterChecks: 1), locator: locator
+        )
+
+        _ = await collectStates(subject.install(package: packageFixtureURL, app: app))
+
+        #expect(verifier.expectedTeamIDs == [app.teamID])
+        #expect(locator.checkCount >= 2, "the already-installed check and at least one poll")
+        #expect(locator.askedBundleIDs.allSatisfy { $0 == app.bundleID })
+        #expect(locator.askedBundleIDs.count == locator.checkCount)
     }
 
     @Test func cancellingTheTaskStopsPollingAndNeverKillsInstaller() async throws {
@@ -110,17 +239,20 @@ struct PackageInstallerTests {
 
         #expect(locator.checkCount == checksAtCancel)
         #expect(clock.sleepCount == 1)
-        #expect(await runner.toolNames == ["open"])
+        #expect(await runner.toolNames == ["pkgutil", "open"])
     }
 
     @Test func alreadyInstalledAppEmitsFailedAndNeverOpensThePackage() async {
         let runner = PackageFakeRunner()
-        let subject = installer(runner: runner, locator: PackageFakeLocator(appearsAfterChecks: 0))
+        let locator = PackageFakeLocator(appearsAfterChecks: 0)
+        let app = packageCatalogApp()
+        let subject = installer(runner: runner, locator: locator)
 
-        let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
+        let states = await collectStates(subject.install(package: packageFixtureURL, app: app))
 
         #expect(states == [.failed(.alreadyInstalled)])
         #expect(await runner.calls.isEmpty)
+        #expect(locator.askedBundleIDs == [app.bundleID])
     }
 
     @Test func installerThatDoesNotOpenEmitsFailed() async {

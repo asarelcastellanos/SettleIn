@@ -5,6 +5,9 @@ import Foundation
 /// An install runs `downloading`, then `verifying`, then `installing`, then `installed`. The reducer has
 /// no event that moves `downloading` straight to `installing`, so no run reaches `installing` without
 /// passing `verifying`. `InstallStateTests` checks this on the whole transition graph.
+///
+/// For a dmg or zip, the installer checks the signature inside its call, so `verifying` lasts until the app
+/// is checked and copied. For a pkg, `installing` means SettleIn waits for Installer.app.
 public enum InstallState: Equatable, Sendable {
     case idle
     /// `progress` is the fraction from 0 to 1, or `nil` while the server has not announced a size.
@@ -50,6 +53,9 @@ public enum InstallEvent: Equatable, Sendable {
     case verified
     case installFinished
     case uninstallFinished
+    /// The user answered no to a question the installer or the uninstaller asked. The app returns to the state
+    /// it had before the request, and no failure shows.
+    case declined
     /// The user cancelled the download, or the macOS installer quit without installing the app.
     case cancelled
     case failed(InstallFailure)
@@ -62,10 +68,10 @@ extension InstallState {
         switch self {
         case .idle: reduceIdle(event)
         case .downloading(let progress): reduceDownloading(progress, event)
-        case .verifying: event == .verified ? .installing : endingEarly(event)
+        case .verifying: reduceVerifying(event)
         case .installing: event == .installFinished ? .installed : endingEarly(event)
         case .installed: event == .uninstallRequested ? .uninstalling : self
-        case .uninstalling: event == .uninstallFinished ? .idle : failing(event)
+        case .uninstalling: reduceUninstalling(event)
         case .failed: reduceFailed(event)
         }
     }
@@ -83,6 +89,22 @@ extension InstallState {
         case .downloadProgressed(let fraction): .downloading(progress: Self.advance(progress, to: fraction))
         case .downloadFinished: .verifying
         default: endingEarly(event)
+        }
+    }
+
+    private func reduceVerifying(_ event: InstallEvent) -> InstallState {
+        switch event {
+        case .verified: .installing
+        case .declined: .idle
+        default: endingEarly(event)
+        }
+    }
+
+    private func reduceUninstalling(_ event: InstallEvent) -> InstallState {
+        switch event {
+        case .uninstallFinished: .idle
+        case .declined: .installed
+        default: failing(event)
         }
     }
 

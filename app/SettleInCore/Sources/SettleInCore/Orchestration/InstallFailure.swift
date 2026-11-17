@@ -11,6 +11,8 @@ public enum InstallFailure: Error, Equatable, Sendable {
     case uninstall(UninstallError)
     /// The uninstaller left some paths alone. The log lists them.
     case uninstallIncomplete(leftAlone: Int)
+    /// The uninstaller removed every path the catalog lists, and LaunchServices still finds the app.
+    case stillPresentAfterUninstall
     /// The engine stopped without a final result.
     case interrupted
     /// An error the engine does not declare. The message never repeats the error's text.
@@ -39,6 +41,8 @@ public enum InstallFailure: Error, Equatable, Sendable {
         case .uninstallIncomplete(let count):
             "SettleIn left \(count) \(count == 1 ? "item" : "items") alone because the path checks refused it. "
                 + "The log lists them."
+        case .stillPresentAfterUninstall:
+            "SettleIn removed what the catalog lists but still found the app. Remove the app by hand."
         case .interrupted: "The operation stopped before it finished. Try again."
         case .unexpected: "Something unexpected stopped the operation. Copy the log if you report it."
         }
@@ -49,7 +53,8 @@ public enum InstallFailure: Error, Equatable, Sendable {
         switch self {
         case .install(.signatureInvalid(let failure)), .package(.signature(let failure)):
             failure.toolExit
-        case .download, .install, .package, .uninstall, .uninstallIncomplete, .interrupted, .unexpected:
+        case .download, .install, .package, .uninstall, .uninstallIncomplete, .stillPresentAfterUninstall,
+             .interrupted, .unexpected:
             nil
         }
     }

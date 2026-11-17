@@ -19,6 +19,23 @@ public protocol AppDownloading: Sendable {
 public protocol AppInstalling: Sendable {
     @discardableResult
     func install(archive: URL, kind: InstallKind, app: InstallTarget) async throws -> URL
+
+    /// Installs like `install(archive:kind:app:)` and passes notes about the cleanup to `report`.
+    @discardableResult
+    func install(archive: URL, kind: InstallKind, app: InstallTarget, report: InstallReport?) async throws -> URL
+}
+
+extension AppInstalling {
+    /// An installer that has nothing to report ignores the closure.
+    @discardableResult
+    public func install(
+        archive: URL,
+        kind: InstallKind,
+        app: InstallTarget,
+        report: InstallReport?
+    ) async throws -> URL {
+        try await install(archive: archive, kind: kind, app: app)
+    }
 }
 
 /// Installs a pkg through Installer.app. The installer checks the package signature first.

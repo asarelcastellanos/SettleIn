@@ -16,7 +16,7 @@ extension UninstallerTests {
         sandbox.support.appendingPathComponent("Vendor/Listed.app", isDirectory: true)
     }
 
-    @Test func aPackageEntryWithAListedAppOfAnotherBundleRemovesNothing() async throws {
+    @Test func aPackageEntryWithAListedAppOfAnotherBundleRemovesNothingAtAll() async throws {
         let sandbox = try UninstallSandbox.make()
         defer { sandbox.cleanUp() }
         let listed = try sandbox.makeBundle(at: listedBundle(in: sandbox), bundleID: "com.example.SomethingElse")
@@ -32,9 +32,14 @@ extension UninstallerTests {
             return
         }
         #expect(reason.contains("different app"))
+        guard case .refused(let other) = report.outcomes[1] else {
+            Issue.record("the support folder was not refused: \(report.outcomes)")
+            return
+        }
+        #expect(other.contains("left alone"))
         #expect(sandbox.exists(listed))
-        #expect(trash.trashedPaths.count == 1, "only the plain folder reaches the Trash")
-        #expect(report.outcomes[1] == .trashed)
+        #expect(sandbox.exists(support), "no support path is removed when the app is refused")
+        #expect(trash.trashedPaths.isEmpty)
         #expect(sandbox.canariesIntact)
     }
 

@@ -16,18 +16,18 @@ struct UninstallerTests {
         let app = try sandbox.makeApp(named: UninstallTestApp.name, bundleID: bundleID)
         let support = sandbox.support.appendingPathComponent("Doomed")
         let cache = sandbox.home.appendingPathComponent("Library/Caches/com.example.Doomed")
-        let config = sandbox.config.appendingPathComponent("doomed")
-        for folder in [support, cache, config] { try sandbox.makeFolder(folder) }
+        let config = sandbox.config.appendingPathComponent("doomed/data.txt")
+        for folder in [support, cache, config.deletingLastPathComponent()] { try sandbox.makeFolder(folder) }
         let trash = FakeTrash(folder: sandbox.trashFolder)
         let catalogApp = try UninstallTestApp.catalogApp(paths: [
-            "~/Library/Application Support/Doomed", "~/Library/Caches/com.example.Doomed", "~/.config/doomed"
+            "~/Library/Application Support/Doomed", "~/Library/Caches/com.example.Doomed", "~/.config/doomed/data.txt"
         ])
 
         let report = try await Uninstaller.testing(sandbox, trash: trash).uninstall(app: catalogApp)
 
         #expect(report.outcomes == [.trashed, .trashed, .trashed, .trashed])
         #expect(report.items.map(\.path) == [app.path, "~/Library/Application Support/Doomed",
-                                             "~/Library/Caches/com.example.Doomed", "~/.config/doomed"])
+                                             "~/Library/Caches/com.example.Doomed", "~/.config/doomed/data.txt"])
         #expect([app, support, cache, config].allSatisfy { !sandbox.exists($0) })
         #expect(trash.trashedPaths.count == 4)
         #expect(sandbox.canariesIntact)
@@ -121,7 +121,7 @@ struct UninstallerTests {
         )
         let catalogApp = try UninstallTestApp.catalogApp(paths: ["~/Library/Application Support/Doomed"])
 
-        await #expect(throws: UninstallError.appStillRunning) { try await uninstaller.uninstall(app: catalogApp) }
+        await #expect(throws: UninstallError.quitDeclined) { try await uninstaller.uninstall(app: catalogApp) }
 
         #expect(quits.timesCalled == 1)
         #expect(running.terminateTimeouts.isEmpty)

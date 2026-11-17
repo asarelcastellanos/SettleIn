@@ -79,15 +79,6 @@ struct AppRowView: View {
     }
 
     private var statusText: String {
-        switch state {
-        case .idle: "Not installed"
-        case .downloading(let progress):
-            progress.map { "Downloading, \(Int($0 * 100))%" } ?? "Downloading"
-        case .verifying: "Verifying"
-        case .installing: "Installing"
-        case .installed: "Installed"
-        case .uninstalling: "Uninstalling"
-        case .failed: "Failed"
-        }
+        state.statusText(for: app.install)
     }
 }

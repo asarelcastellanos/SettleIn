@@ -4,6 +4,8 @@ import Foundation
 struct DiskImageMounter: Sendable {
     let runner: any CommandRunner
     let attachTimeout: Duration
+    /// Receives a note when a mounted image cannot be detached.
+    let report: InstallReport?
 
     private static let hdiutil = URL(fileURLWithPath: "/usr/bin/hdiutil")
 
@@ -30,10 +32,10 @@ struct DiskImageMounter: Sendable {
         }
         do {
             let value = try await body(mounted)
-            await detach(mountPoint)
+            await detach(mountPoint, reportingFailure: true)
             return value
         } catch {
-            await detach(mountPoint)
+            await detach(mountPoint, reportingFailure: true)
             throw error
         }
     }
@@ -63,11 +65,15 @@ struct DiskImageMounter: Sendable {
     }
 
     /// Detaches `mountPoint`, and retries once with `-force` when the first try fails. A failure after the retry
-    /// is not an error for the install, because the app is already copied or the install already failed.
-    private func detach(_ mountPoint: URL) async {
+    /// is not an error for the install, because the app is already copied or the install already failed. With
+    /// `reportingFailure`, the failure goes to `report`. A failed attach passes false, because nothing is mounted.
+    private func detach(_ mountPoint: URL, reportingFailure: Bool = false) async {
         let first = try? await runner.run(executable: Self.hdiutil, arguments: ["detach", mountPoint.path])
         if first?.exitCode == 0 { return }
-        _ = try? await runner.run(executable: Self.hdiutil, arguments: ["detach", "-force", mountPoint.path])
+        let forced = try? await runner.run(executable: Self.hdiutil, arguments: ["detach", "-force", mountPoint.path])
+        guard reportingFailure, forced?.exitCode != 0 else { return }
+        let outcome = forced.map { "hdiutil exited with code \($0.exitCode)" } ?? "hdiutil did not start"
+        report?("the disk image mounted at \(mountPoint.path) was not detached, and \(outcome)")
     }
 
     /// Returns the `mount-point` entry that is the folder SettleIn asked for. Any other mount point is ignored.
@@ -101,43 +107,36 @@ enum ToolOutput {
 
 /// Runs one command and gives up after a time limit.
 enum TimedCommand {
-    /// Returns nil when the limit passes first. The limit cancels the command's task, and the caller stops
-    /// waiting even when the command ignores the cancellation.
+    /// Returns nil when the limit passes first. The limit cancels the command's task and then waits until the
+    /// command has ended, so the caller never goes on while the child process still runs. The runner ends the
+    /// child when it sees the cancellation.
     static func run(
         timeout: Duration,
         operation: @escaping @Sendable () async throws -> CommandResult
     ) async throws -> CommandResult? {
-        try await withCheckedThrowingContinuation { continuation in
-            let once = ResumeOnce(continuation)
-            let work = Task { try await operation() }
-            let timer = Task {
-                do { try await Task.sleep(for: timeout) } catch { return }
-                work.cancel()
-                once.resume(.success(nil))
-            }
-            Task {
-                let result = await work.result
-                timer.cancel()
-                once.resume(result.map { Optional($0) })
-            }
+        let work = Task { try await operation() }
+        let expiry = Expiry()
+        let timer = Task {
+            do { try await Task.sleep(for: timeout) } catch { return }
+            expiry.mark()
+            work.cancel()
         }
+        let outcome = await withTaskCancellationHandler {
+            await work.result
+        } onCancel: {
+            work.cancel()
+        }
+        timer.cancel()
+        if expiry.hasExpired, case .failure = outcome { return nil }
+        return try outcome.get()
     }
 }
 
-/// Resumes a continuation on the first call and ignores every later call.
-private final class ResumeOnce: @unchecked Sendable {
+/// Records that the time limit passed.
+private final class Expiry: @unchecked Sendable {
     private let lock = NSLock()
-    private var continuation: CheckedContinuation<CommandResult?, Error>?
+    private var expired = false
 
-    init(_ continuation: CheckedContinuation<CommandResult?, Error>) {
-        self.continuation = continuation
-    }
-
-    func resume(_ result: Result<CommandResult?, Error>) {
-        lock.lock()
-        let pending = continuation
-        continuation = nil
-        lock.unlock()
-        pending?.resume(with: result)
-    }
+    func mark() { lock.withLock { expired = true } }
+    var hasExpired: Bool { lock.withLock { expired } }
 }

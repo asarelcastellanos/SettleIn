@@ -9,6 +9,20 @@ public enum UninstallPathRule: Error, Equatable, Sendable {
     case containsParentTraversal
     case containsWildcard
     case malformed
+    /// A component other than the last ends in `.app`.
+    case insideAppBundle
+    /// The first folder below `~/Library` is not one of `UninstallPathShape.allowedLibraryFolders`.
+    case libraryFolderNotAllowed
+    /// A path under `/Applications` is not `/Applications/<Name>.app`.
+    case notAnApplication
+
+    init(_ violation: UninstallPathShape.Violation) {
+        switch violation {
+        case .insideAppBundle: self = .insideAppBundle
+        case .libraryFolderNotAllowed: self = .libraryFolderNotAllowed
+        case .notAnApplication: self = .notAnApplication
+        }
+    }
 }
 
 /// The rule that a catalog entry broke.
@@ -33,6 +47,8 @@ public enum CatalogRule: Equatable, Sendable {
     case insecureURL(String)
     case hostNotAllowed(host: String, url: String)
     case invalidUninstallPath(path: String, rule: UninstallPathRule)
+    /// A pkg entry lists no `/Applications/<Name>.app` path, so the uninstaller could not remove the app.
+    case missingApplicationsApp
     case missingSHA256(download: String)
     case unexpectedSHA256(download: String)
     case conflictingSources
@@ -74,6 +90,7 @@ extension CatalogRule {
         case .insecureURL(let value): "\(value) does not use https"
         case .hostNotAllowed(let host, let url): "host \(host) of \(url) is not in allowedHosts"
         case .invalidUninstallPath(let path, let rule): "uninstall path \(path) breaks a rule (\(rule))"
+        case .missingApplicationsApp: "a pkg entry must list its app as /Applications/<Name>.app in uninstallPaths"
         case .missingSHA256(let download): "a versioned entry needs a sha256 for \(download)"
         case .unexpectedSHA256(let download): "a latest entry must not have a sha256 for \(download)"
         case .conflictingSources: "an entry cannot mix downloadURL or sha256 with arm64 or x86_64"

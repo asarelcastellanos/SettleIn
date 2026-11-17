@@ -210,7 +210,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = SettleIn;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				OTHER_CODE_SIGN_FLAGS = "-o runtime";
 				PRODUCT_BUNDLE_IDENTIFIER = dev.settlein.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -230,7 +230,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = SettleIn;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				OTHER_CODE_SIGN_FLAGS = "-o runtime";
 				PRODUCT_BUNDLE_IDENTIFIER = dev.settlein.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";

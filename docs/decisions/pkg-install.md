@@ -8,13 +8,17 @@ SettleIn installs a `.pkg` by opening it in Installer.app with `/usr/bin/open -a
 
 Before it opens the package, SettleIn checks the package signature and Team ID with `SignatureVerifier.verifyPackage`. A package that fails the check is never opened.
 
-After Installer.app opens, `PackageInstaller` polls once per second for an app with the catalog bundle ID. It ends in one of these states.
+Next, SettleIn runs `pkgutil --pkg-info <pkgIdentifier>` once and records whether a receipt already exists. A receipt can stay from an earlier install. The already-installed check stops any run that starts with the app bundle present, so a bundle that appears during the polls came from this run.
+
+After Installer.app opens, `PackageInstaller` polls once per second for an app with the catalog bundle ID. Each poll also asks whether Installer.app is running. The poll ends in one of these states.
 
 - `waitingForUser` means Installer.app is open and the app bundle does not exist.
-- `installing` means the app bundle exists and `pkgutil --pkg-info <pkgIdentifier>` reports no receipt.
-- `installed` means the app bundle and the receipt both exist.
-- `cancelled` means Installer.app quit and the bundle never appeared, or the caller cancelled the task.
-- `failed` means the signature check failed, the install timed out (10 minutes by default), the app was already installed, or Installer.app did not open.
+- `installing` means the app bundle exists and the install is not finished.
+- `installed` means the app bundle exists and either the receipt is new since before the open, or Installer.app has been closed for three polls in a row.
+- `cancelled` means Installer.app and the app bundle were both absent for three polls in a row, or the caller cancelled the task.
+- `failed` means the signature check failed, the install timed out, the app was already installed, or Installer.app did not open.
+
+The timeout is 10 minutes by default. It counts only the polls that find Installer.app closed, so the poll never reports `timedOut` while the Installer window is open. Because three closed polls in a row already end the run, a timeout needs Installer.app to close and reopen repeatedly. This matters because the orchestrator deletes the downloaded package when the poll returns, and Installer.app may still read the file.
 
 Cancelling the task stops the polling. It does not quit Installer.app, because an install in progress has to finish or fail on its own.
 
@@ -26,10 +30,12 @@ Cancelling the task stops the polling. It does not quit Installer.app, because a
 
 ## Cost
 
-SettleIn cannot read the state of Installer.app, so `installing` is inferred. The state means the app bundle exists and the receipt does not exist yet. It does not mean Installer.app is copying files. Three limits follow.
+SettleIn cannot read the state of Installer.app, so `installing` is inferred. The state means the app bundle exists and the install is not finished. It does not mean Installer.app is copying files. These limits follow.
 
 - Installer.app does not report progress, so SettleIn shows no percentage.
 - LaunchServices can report a stale answer for a bundle ID. The manual test plan in issue 12 confirms detection on a clean VM with real Chrome.
 - SettleIn cannot tell a user who closed the window from an installer that crashed. Both end as `cancelled` when the bundle is absent.
+- Three polls in a row must find Installer.app closed before the result is `cancelled` (bundle absent) or `installed` (bundle present, no new receipt). A slow start of Installer.app is not read as a quit, and the verdict takes about three seconds.
+- When a receipt existed before the run, SettleIn cannot see a new receipt. It reports `installed` when Installer.app has been closed for three polls in a row with the bundle present. A user who closes the Installer window before the install finishes, after the bundle was copied, also ends as `installed`.
 
 SettleIn does not use Accessibility APIs or read the Installer.app window to get a better signal. That is out of scope.

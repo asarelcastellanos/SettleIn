@@ -101,14 +101,25 @@ final class FakeAppInstaller: AppInstalling, @unchecked Sendable {
     }
 
     private let result: Result<URL, any Error>
+    private let notes: [String]
     private let lock = NSLock()
     private var recordedCalls: [Call] = []
 
-    init(result: Result<URL, any Error> = .success(URL(fileURLWithPath: "/Applications/Fixture.app"))) {
+    /// `notes` are sent to the `report` closure of every call, before the result.
+    init(
+        result: Result<URL, any Error> = .success(URL(fileURLWithPath: "/Applications/Fixture.app")),
+        notes: [String] = []
+    ) {
         self.result = result
+        self.notes = notes
     }
 
     var calls: [Call] { lock.withLock { recordedCalls } }
+
+    func install(archive: URL, kind: InstallKind, app: InstallTarget, report: InstallReport?) async throws -> URL {
+        notes.forEach { report?($0) }
+        return try await install(archive: archive, kind: kind, app: app)
+    }
 
     func install(archive: URL, kind: InstallKind, app: InstallTarget) async throws -> URL {
         let existed = FileManager.default.fileExists(atPath: archive.path)
@@ -155,11 +166,14 @@ final class FakeUninstaller: AppUninstalling, @unchecked Sendable {
     }
 }
 
+/// Reports a URL for each bundle ID in `found`. The default URL names no real file, so an uninstall test sees
+/// the app as gone. A test that needs the app to exist on disk passes a URL of its own.
 struct FakeBundleLocator: BundleLocator {
     let found: Set<String>
+    var url = URL(fileURLWithPath: "/Applications/Fixture.app")
 
     func applicationURL(forBundleID bundleID: BundleID) -> URL? {
-        found.contains(bundleID.rawValue) ? URL(fileURLWithPath: "/Applications/Fixture.app") : nil
+        found.contains(bundleID.rawValue) ? url : nil
     }
 }
 
@@ -250,6 +264,7 @@ struct OrchestratorHarness {
         packageInstaller: FakePackageInstaller = FakePackageInstaller(),
         uninstaller: FakeUninstaller = FakeUninstaller(),
         installedBundleIDs: Set<String> = [],
+        locatedAt locatedURL: URL? = nil,
         architecture: CPUArchitecture = .arm64
     ) {
         downloader = FakeDownloader(root: root, behavior: behavior)
@@ -261,7 +276,8 @@ struct OrchestratorHarness {
             appInstaller: appInstaller,
             packageInstaller: packageInstaller,
             uninstaller: uninstaller,
-            locator: FakeBundleLocator(found: installedBundleIDs),
+            locator: locatedURL.map { FakeBundleLocator(found: installedBundleIDs, url: $0) }
+                ?? FakeBundleLocator(found: installedBundleIDs),
             architecture: architecture,
             now: { Self.fixedDate },
             homeDirectory: home

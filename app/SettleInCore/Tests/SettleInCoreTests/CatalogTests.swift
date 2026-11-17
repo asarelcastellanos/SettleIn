@@ -123,11 +123,32 @@ struct CatalogTests {
         ("path-dotdot", "~/Library/../.ssh", .containsParentTraversal),
         ("path-library-root", "~/Library", .isRoot),
         ("path-library-child", "~/Library/Preferences", .directChildOfLibrary),
-        ("path-wildcard", "~/Library/Caches/com.example.*", .containsWildcard)
+        ("path-wildcard", "~/Library/Caches/com.example.*", .containsWildcard),
+        ("path-keychains", "~/Library/Keychains/login.keychain-db", .libraryFolderNotAllowed),
+        ("path-icloud-drive", "~/Library/Mobile Documents/com~apple~CloudDocs/Documents", .libraryFolderNotAllowed),
+        ("path-inside-app", "/Applications/Example.app/Contents/MacOS/Example", .insideAppBundle),
+        ("path-applications-deep", "/Applications/Utilities/Example.app", .notAnApplication)
     ])
     func badUninstallPathFails(fixture: String, path: String, rule: UninstallPathRule) throws {
         let error = try Self.parseError(fixture: fixture)
         #expect(error == CatalogError(appID: "example", rule: .invalidUninstallPath(path: path, rule: rule)))
+    }
+
+    @Test func pkgEntryWithoutAnApplicationsAppFails() throws {
+        let error = try Self.parseError(fixture: "pkg-without-app")
+        #expect(error == CatalogError(appID: "example", rule: .missingApplicationsApp))
+        #expect(error.description.contains("/Applications/<Name>.app"))
+    }
+
+    @Test func badAppNameFails() throws {
+        let error = try Self.parseError(fixture: "bad-app-name")
+        #expect(error == CatalogError(appID: "example", rule: .invalidAppName("../Evil.app")))
+    }
+
+    @Test func realCatalogPkgEntryListsItsApplicationsApp() throws {
+        let apps = try CatalogParser.parse(Self.catalogData("catalog.json")).apps
+        let chrome = try #require(apps.first { $0.id == "google-chrome" })
+        #expect(chrome.uninstallPaths.contains { $0.rawValue == "/Applications/Google Chrome.app" })
     }
 
     @Test func errorNamesTheAppAndTheRule() throws {
@@ -210,6 +231,14 @@ struct CatalogTests {
         "/Applications/Example.app",
         "~/Library/Application Support/Example",
         "~/Library/Preferences/com.example.App.plist",
+        "~/Library/Caches/Vendor/Example",
+        "~/Library/Logs/Example/run.log",
+        "~/Library/Containers/com.example.App",
+        "~/Library/Saved Application State/com.example.App.savedState",
+        "~/Library/HTTPStorages/com.example.App",
+        "~/Library/WebKit/com.example.App",
+        "~/Library/Cookies/com.example.App.binarycookies",
+        "~/Library/Application Support/Vendor/Listed.app",
         "~/.config/example",
         "~/.config/example/settings.toml"
     ])
@@ -230,7 +259,21 @@ struct CatalogTests {
         ("~/Library/Caches/", .malformed),
         ("~/Library//Caches/x", .malformed),
         ("~/Library/Caches/./x", .malformed),
-        ("/Applications/Ex\nample.app", .malformed)
+        ("/Applications/Ex\nample.app", .malformed),
+        ("/Applications/Example.app/Contents/MacOS/x", .insideAppBundle),
+        ("/Applications/Example.APP/Contents", .insideAppBundle),
+        ("~/Library/Application Support/Example.app/x", .insideAppBundle),
+        ("~/Library/Caches/Vendor.app/Cache/x", .insideAppBundle),
+        ("~/.config/tool.app/settings", .insideAppBundle),
+        ("~/Library/Application Support/A.app/B.app", .insideAppBundle),
+        ("/Applications/Utilities/Example.app", .notAnApplication),
+        ("/Applications/Example", .notAnApplication),
+        ("/Applications/.app", .notAnApplication),
+        ("~/Library/Keychains/login.keychain-db", .libraryFolderNotAllowed),
+        ("~/Library/Mobile Documents/com~apple~CloudDocs/x", .libraryFolderNotAllowed),
+        ("~/Library/Mail/V10/x", .libraryFolderNotAllowed),
+        ("~/Library/caches/x", .libraryFolderNotAllowed),
+        ("~/Library/LaunchAgents/com.example.plist", .libraryFolderNotAllowed)
     ])
     func uninstallPathRejectsBrokenPaths(raw: String, rule: UninstallPathRule) {
         #expect(throws: rule) {

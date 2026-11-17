@@ -1,34 +1,77 @@
 import Foundation
 
 /// Runs a program with `Process`. It passes the argument array to the program directly.
+///
+/// Cancelling the task that calls `run` ends the program. The runner sends SIGTERM, and sends SIGKILL when the
+/// program is still alive after `terminationGrace`. `run` then throws `CancellationError`, and it throws only
+/// after the program has ended.
 public struct ProcessCommandRunner: CommandRunner {
-    public init() {}
+    private let terminationGrace: Duration
+
+    public init(terminationGrace: Duration = .seconds(2)) {
+        self.terminationGrace = terminationGrace
+    }
 
     public func run(executable: URL, arguments: [String]) async throws -> CommandResult {
         guard executable.isFileURL, executable.path.hasPrefix("/") else {
             throw CommandRunnerError.executableNotAbsolute(executable.absoluteString)
         }
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global().async {
-                continuation.resume(with: Result { try Self.runBlocking(executable: executable, arguments: arguments) })
+        let child = ChildProcess(executable: executable, arguments: arguments, terminationGrace: terminationGrace)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global().async {
+                    continuation.resume(with: Result { try child.runToCompletion() })
+                }
             }
+        } onCancel: {
+            child.cancel()
+        }
+    }
+}
+
+/// One program run. A lock guards the cancel flag and the launch, so a cancel that arrives before the launch
+/// stops the program from starting, and a cancel that arrives after it signals the running program.
+private final class ChildProcess: @unchecked Sendable {
+    private let process = Process()
+    private let terminationGrace: Duration
+    private let lock = NSLock()
+    private var cancelled = false
+
+    init(executable: URL, arguments: [String], terminationGrace: Duration) {
+        process.executableURL = executable
+        process.arguments = arguments
+        // A fixed environment keeps the tool output in English and drops inherited variables such as DYLD_*.
+        process.environment = ["LC_ALL": "C"]
+        self.terminationGrace = terminationGrace
+    }
+
+    func cancel() {
+        let isRunning = lock.withLock {
+            cancelled = true
+            return process.isRunning
+        }
+        guard isRunning else { return }
+        process.terminate()
+        let seconds = Double(terminationGrace.components.seconds)
+            + Double(terminationGrace.components.attoseconds) / 1e18
+        DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { [self] in
+            let stillRunning = lock.withLock { process.isRunning }
+            if stillRunning { kill(process.processIdentifier, SIGKILL) }
         }
     }
 
     /// Runs on a background queue, because it waits for the program to exit. Two readers drain stdout
     /// and stderr at the same time, so a program that fills one pipe cannot block.
-    private static func runBlocking(executable: URL, arguments: [String]) throws -> CommandResult {
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = arguments
-        // A fixed environment keeps the tool output in English and drops inherited variables such as DYLD_*.
-        process.environment = ["LC_ALL": "C"]
+    func runToCompletion() throws -> CommandResult {
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
-        try process.run()
+        try lock.withLock {
+            if cancelled { throw CancellationError() }
+            try process.run()
+        }
 
         let stdoutBox = DataBox()
         let stderrBox = DataBox()
@@ -42,6 +85,7 @@ public struct ProcessCommandRunner: CommandRunner {
         }
         group.wait()
         process.waitUntilExit()
+        if lock.withLock({ cancelled }) { throw CancellationError() }
 
         // A program that a signal ended reports 128 plus the signal number, as a shell does.
         let exitCode = process.terminationReason == .uncaughtSignal
@@ -49,8 +93,8 @@ public struct ProcessCommandRunner: CommandRunner {
             : process.terminationStatus
         return CommandResult(
             exitCode: exitCode,
-            stdout: text(stdoutBox.data),
-            stderr: text(stderrBox.data)
+            stdout: Self.text(stdoutBox.data),
+            stderr: Self.text(stderrBox.data)
         )
     }
 

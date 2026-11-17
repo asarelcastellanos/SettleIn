@@ -106,7 +106,7 @@ extension IntegrationTests {
         }
     }
 
-    @Test func installedAppStaysWhenTheUserDeclinesTheReplace() async throws {
+    @Test func installedAppStaysAndTheRowReturnsToIdleWhenTheUserDeclinesTheReplace() async throws {
         try await withEndToEndWorld { world in
             let app = try world.catalogApp(.zip)
             let old = try world.preinstall()
@@ -115,7 +115,7 @@ extension IntegrationTests {
 
             let outcome = await orchestrator.install(app)
 
-            #expect(failure(of: outcome) == .install(.replaceDeclined))
+            #expect(outcome == .completed(.idle))
             #expect(infoValue("CFBundleName", of: old) == "Test")
             #expect(world.installedApps == ["Fixture.app"])
             #expect(world.leftovers.isEmpty)
@@ -178,7 +178,7 @@ extension IntegrationTests {
         }
     }
 
-    @Test func runningAppIsNotReplacedWhenTheUserRefusesToQuit() async throws {
+    @Test func runningAppIsNotReplacedAndTheRowReturnsToIdleWhenTheUserRefusesToQuit() async throws {
         try await withEndToEndWorld { world in
             let app = try world.catalogApp(.zip)
             let old = try world.preinstall()
@@ -190,7 +190,7 @@ extension IntegrationTests {
 
             let outcome = await orchestrator.install(app)
 
-            #expect(failure(of: outcome) == .install(.appStillRunning))
+            #expect(outcome == .completed(.idle))
             #expect(running.terminateTimeouts.isEmpty)
             #expect(infoValue("CFBundleName", of: old) == "Test")
             #expect(world.installedApps == ["Fixture.app"])
@@ -214,7 +214,7 @@ extension IntegrationTests {
         }
     }
 
-    @Test func uninstallRefusesWhileTheAppRunsAndRemovesNothing() async throws {
+    @Test func uninstallStopsWhenTheUserRefusesToQuitAndRemovesNothing() async throws {
         try await withEndToEndWorld { world in
             let app = try world.catalogApp(.dmg)
             try world.preinstall()
@@ -229,7 +229,7 @@ extension IntegrationTests {
 
             let outcome = await orchestrator.uninstall(app)
 
-            #expect(failure(of: outcome) == .uninstall(.appStillRunning))
+            #expect(outcome == .completed(.installed))
             #expect(world.installedApps == ["Fixture.app"])
             #expect(world.sandbox.exists(world.sandbox.support.appendingPathComponent("SettleInFixture")))
             #expect(world.install.entries(in: world.sandbox.trashFolder).isEmpty)

@@ -15,7 +15,7 @@ The file is an object with one key, `apps`, which holds a list of entries. Each 
 - `allowedHosts` lists every host a download may use, including the hosts the download redirects to.
 - `teamID` is the vendor's Team ID, 10 uppercase letters or digits.
 - `bundleID` is the app's bundle identifier.
-- `uninstallPaths` lists the paths the uninstaller may remove.
+- `uninstallPaths` lists the paths the uninstaller may remove. A `pkg` entry lists its app as `/Applications/<Name>.app`.
 - `architecture` is `universal` or `perArch`. A `universal` entry has `downloadURL` and an optional `sha256`. A `perArch` entry has an `arm64` object and an `x86_64` object, and each holds `downloadURL` and an optional `sha256`. An entry cannot hold both forms. In Swift they are two cases of the `DownloadSource` enum.
 
 ## Rules
@@ -23,7 +23,12 @@ The file is an object with one key, `apps`, which holds a list of entries. Each 
 - A `version` other than `latest` needs a `sha256` for every download. A `latest` entry has none, and it relies on the Team ID check alone.
 - Every URL uses `https`.
 - Every download host is in `allowedHosts`.
-- An uninstall path starts with `/Applications/`, `~/Library/`, or `~/.config/`. It is not one of those three folders itself, and it is not a direct child of `~/Library`. It has no `..` component, no wildcard (`*`, `?`, `[`, `]`, `{`, `}`), no empty or `.` component, and no control character. The Swift type `UninstallPath` checks the catalog text only. The uninstaller checks symlinks at run time.
+- A `pkg` entry lists at least one `/Applications/<Name>.app` path in `uninstallPaths`, so the uninstaller can remove the app. The parser rejects a `pkg` entry without one.
+- An uninstall path has one of three forms. `UninstallPath` and the schema check the same rules.
+  - `/Applications/<Name>.app`, and nothing deeper.
+  - `~/Library/<folder>/<more>`. The folder is Application Support, Caches, Preferences, Logs, Containers, Saved Application State, HTTPStorages, WebKit, or Cookies, spelled with exactly that letter case. A direct child of `~/Library` is not allowed, so the path goes at least one level below the folder.
+  - `~/.config/<name>`, or a path below it. A `~/.config/<name>` entry removes a whole folder, so a reviewer must check that the folder belongs to the app.
+- No component of an uninstall path except the last ends in `.app`, in any letter case, so a path never reaches into an app bundle. The path has no `..` component, no wildcard (`*`, `?`, `[`, `]`, `{`, `}`), no empty or `.` component, and no control character. The Swift type `UninstallPath` checks the catalog text only. The uninstaller checks symlinks at run time, and `PathGuard` applies the same shape rules again to the resolved path.
 - A SHA-256 is 64 hex characters. The parser stores it in lowercase.
 
 ## Validate the schema
@@ -46,7 +51,7 @@ The fixtures in `catalog/fixtures/` are test data for the schema and for `Catalo
 for f in catalog/fixtures/invalid/*.json; do bash catalog/validate.sh "$f" >/dev/null 2>&1; echo "$? $f"; done
 ```
 
-Every fixture prints a non-zero code except the two in the next section.
+Every fixture prints a non-zero code except the two in the next section. The path fixtures cover a Keychains path, an iCloud Drive path, a path inside an `.app`, and a deep `/Applications` path. `pkg-without-app.json` covers a `pkg` entry with no `/Applications/<Name>.app` path, and `bad-app-name.json` covers an `appName` that holds a path separator.
 
 ## Rules the schema cannot express
 

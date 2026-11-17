@@ -145,3 +145,25 @@ struct OperationLogOrchestratorTests {
         }
     }
 }
+
+struct OperationLogBoundaryTests {
+    private static let date = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func aLongerNameThatStartsWithTheHomeFolderIsNotChanged() {
+        var log = OperationLog(homeDirectory: "/Users/al")
+        log.append("/Users/alice/Library/x", at: Self.date)
+        #expect(log.entries.first?.text == "/Users/alice/Library/x")
+    }
+
+    @Test func theHomeFolderIsReplacedAtASlashAndAtTheEndOfTheText() {
+        var log = OperationLog(homeDirectory: "/Users/al")
+        log.append("/Users/al/Library/x and /Users/al", at: Self.date)
+        #expect(log.entries.first?.text == "~/Library/x and ~")
+    }
+
+    @Test func oneLineCanHoldBothKindsOfMatch() {
+        var log = OperationLog(homeDirectory: "/Users/al")
+        log.append("/Users/alice/a then /Users/al/b then /Users/almond", at: Self.date)
+        #expect(log.entries.first?.text == "/Users/alice/a then ~/b then /Users/almond")
+    }
+}

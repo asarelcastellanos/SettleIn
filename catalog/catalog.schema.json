@@ -26,9 +26,9 @@
       "pattern": "^[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$"
     },
     "uninstallPath": {
-      "description": "A path under /Applications, ~/Library, or ~/.config. Not a root, not a direct child of ~/Library, no .. component, no wildcard.",
+      "description": "One of /Applications/<Name>.app, ~/Library/<folder>/<more>, or ~/.config/<name>. The ~/Library folder is Application Support, Caches, Preferences, Logs, Containers, Saved Application State, HTTPStorages, WebKit, or Cookies. No component except the last ends in .app. No .. component, no wildcard.",
       "type": "string",
-      "pattern": "^(?!.*[\\x00-\\x1f\\x7f])(?!.*(^|/)\\.\\.(/|$))(?!.*(^|/)\\.(/|$))(?!.*//)(?!.*[*?\\[\\]{}])(/Applications/[^/]+(/[^/]+)*|~/Library/[^/]+/[^/]+(/[^/]+)*|~/\\.config/[^/]+(/[^/]+)*)$"
+      "pattern": "^(?!.*[\\x00-\\x1f\\x7f])(?!.*(^|/)\\.\\.(/|$))(?!.*(^|/)\\.(/|$))(?!.*//)(?!.*[*?\\[\\]{}])(?!.*[.][aA][pP][pP]/)(/Applications/[^/]+[.][aA][pP][pP]|~/Library/(Application Support|Caches|Preferences|Logs|Containers|Saved Application State|HTTPStorages|WebKit|Cookies)/[^/]+(/[^/]+)*|~/\\.config/[^/]+(/[^/]+)*)$"
     },
     "download": {
       "type": "object",
@@ -97,7 +97,13 @@
           "if": { "properties": { "installType": { "const": "pkg" } } },
           "then": {
             "required": ["pkgIdentifier"],
-            "not": { "required": ["appName"] }
+            "not": { "required": ["appName"] },
+            "properties": {
+              "uninstallPaths": {
+                "type": "array",
+                "contains": { "type": "string", "pattern": "^/Applications/[^/]+[.][aA][pP][pP]$" }
+              }
+            }
           },
           "else": {
             "required": ["appName"],

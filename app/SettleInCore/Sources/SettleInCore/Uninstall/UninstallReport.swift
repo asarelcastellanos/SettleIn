@@ -24,10 +24,15 @@ public struct UninstallReport: Equatable, Sendable {
 
 /// Why an uninstall stopped before it removed anything.
 public enum UninstallError: Error, Equatable, Sendable, LocalizedError {
+    /// The user answered no when asked to quit the running app.
+    case quitDeclined
+    /// The app did not quit, or it was still running after the wait.
     case appStillRunning
 
     public var errorDescription: String? {
         switch self {
+        case .quitDeclined:
+            return "The app is running and was not asked to quit, so SettleIn removed nothing."
         case .appStillRunning:
             return "The app is still running, so SettleIn removed nothing. Quit the app and try again."
         }

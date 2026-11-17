@@ -4,7 +4,7 @@ SettleIn is a macOS app that installs a set of apps from a catalog you can read.
 
 ## Status
 
-Pre-alpha. Version 0.1.0 is in progress, and there is nothing to download yet. The sections below describe the design, and each one links to the issue that builds it.
+Pre-alpha. This is version 0.2.0, and there is nothing to download yet. The repository holds the catalog parser, the downloader, the signature verifier, the dmg, zip, and pkg installers, the uninstaller, the install orchestrator, and a plain window that runs them. None of it has had a release or an outside review. The sections below describe the design and link to the code for each part.
 
 ## Why the code is open source
 
@@ -12,13 +12,13 @@ SettleIn downloads software and installs it on your Mac. You should be able to r
 
 ## Security design
 
-These are design goals for the app. They are not claims about a released build, and nothing here means the app is safe. The code that runs each check will be linked here once it exists.
+These are design goals for the app. They are not claims about a released build, and nothing here means the app is safe. Each item links to the code that runs the check.
 
-- The app checks each downloaded app's code signature and compares its Team ID with the catalog entry ([issue 7](https://github.com/asarelcastellanos/SettleIn/issues/7)).
-- A versioned catalog entry pins a SHA-256 hash to its download URL, and the app rejects a file with a different hash ([issue 6](https://github.com/asarelcastellanos/SettleIn/issues/6)). An entry whose version is `latest` serves the vendor's newest build, has no hash, and relies on the code signature and Team ID check alone.
-- The app downloads over HTTPS only, and only from hosts on an allowlist ([issue 6](https://github.com/asarelcastellanos/SettleIn/issues/6)).
-- The app never builds a shell string. It runs each tool with an argument list ([issue 8](https://github.com/asarelcastellanos/SettleIn/issues/8)).
-- The uninstaller removes only paths that the catalog lists ([issue 10](https://github.com/asarelcastellanos/SettleIn/issues/10)).
+- The app checks each downloaded app's code signature and compares its Team ID with the catalog entry ([`SignatureVerifier`](app/SettleInCore/Sources/SettleInCore/Signature/SignatureVerifier.swift)). The install runs in a fixed order. The reducer cannot go from `downloading` to `installing` without `verifying` ([`InstallState`](app/SettleInCore/Sources/SettleInCore/Orchestration/InstallState.swift)), and the installer runs the signature check inside its call, so a dmg or zip row reads "Checking and installing" until the app is in place.
+- A versioned catalog entry pins a SHA-256 hash to its download URL, and the app rejects a file with a different hash ([`Downloader`](app/SettleInCore/Sources/SettleInCore/Download/Downloader.swift)). An entry whose version is `latest` serves the vendor's newest build, has no hash, and relies on the code signature and Team ID check alone.
+- The app downloads over HTTPS only, and only from hosts on an allowlist, for the first URL and for every redirect ([`DownloadPolicy`](app/SettleInCore/Sources/SettleInCore/Download/DownloadPolicy.swift)).
+- The app never builds a shell string. It runs each tool with an argument list ([`ProcessCommandRunner`](app/SettleInCore/Sources/SettleInCore/Signature/ProcessCommandRunner.swift)).
+- The uninstaller removes only the app the catalog entry names and the paths the entry lists, and it checks each path again right before it removes it ([`Uninstaller`](app/SettleInCore/Sources/SettleInCore/Uninstall/Uninstaller.swift)).
 - The app never asks for or handles your password.
 
 ## How to verify a release

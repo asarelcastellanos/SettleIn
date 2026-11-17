@@ -1,0 +1,1 @@
+/fixture/path/unsigned/Tiny.app: code object is not signed at all

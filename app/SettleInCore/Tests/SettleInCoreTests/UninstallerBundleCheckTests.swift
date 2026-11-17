@@ -2,8 +2,9 @@ import Foundation
 import Testing
 @testable import SettleInCore
 
-/// A listed path that ends in `.app` must hold the catalog entry's bundle. The listed bundles here sit under
-/// the fake home, because the fake applications folder has no catalog text that names it.
+/// A listed path inside a real bundle must belong to the catalog entry's app. A real bundle is a folder that
+/// ends in `.app` and holds `Contents/Info.plist`. A `.app` folder without a plist is a plain folder. The listed
+/// bundles here sit under the fake home, because the fake applications folder has no catalog text that names it.
 extension UninstallerTests {
     private static let listedApp = "~/Library/Application Support/Vendor/Listed.app"
 
@@ -16,7 +17,7 @@ extension UninstallerTests {
         sandbox.support.appendingPathComponent("Vendor/Listed.app", isDirectory: true)
     }
 
-    @Test func aPackageEntryWithAListedAppOfAnotherBundleRemovesNothingAtAll() async throws {
+    @Test func aRealBundleOfAnotherAppUnderApplicationSupportIsRefusedAndTheOtherPathsGoOn() async throws {
         let sandbox = try UninstallSandbox.make()
         defer { sandbox.cleanUp() }
         let listed = try sandbox.makeBundle(at: listedBundle(in: sandbox), bundleID: "com.example.SomethingElse")
@@ -32,14 +33,50 @@ extension UninstallerTests {
             return
         }
         #expect(reason.contains("different app"))
-        guard case .refused(let other) = report.outcomes[1] else {
-            Issue.record("the support folder was not refused: \(report.outcomes)")
+        #expect(sandbox.exists(listed))
+        #expect(trash.trashedPaths.count == 1, "only the plain folder reaches the Trash")
+        #expect(report.outcomes[1] == .trashed)
+        #expect(sandbox.canariesIntact)
+    }
+
+    @Test func aPathInsideARealBundleOfAnotherAppIsRefused() async throws {
+        let sandbox = try UninstallSandbox.make()
+        defer { sandbox.cleanUp() }
+        let bundle = try sandbox.makeBundle(at: listedBundle(in: sandbox), bundleID: "com.apple.Safari")
+        let inner = bundle.appendingPathComponent("Contents/Resources/data", isDirectory: true)
+        try sandbox.makeFolder(inner)
+        let trash = FakeTrash(folder: sandbox.trashFolder)
+        let inside = "~/Library/Application Support/Vendor/Listed.app/Contents/Resources/data"
+        let catalogApp = try packageEntry(paths: [inside])
+
+        let report = try await Uninstaller.testing(sandbox, trash: trash).uninstall(app: catalogApp)
+
+        guard case .refused(let reason) = report.outcomes[0] else {
+            Issue.record("the inner path was not refused: \(report.outcomes)")
             return
         }
-        #expect(other.contains("left alone"))
-        #expect(sandbox.exists(listed))
-        #expect(sandbox.exists(support), "no support path is removed when the app is refused")
+        #expect(reason.contains("different app"))
+        #expect(sandbox.exists(inner))
         #expect(trash.trashedPaths.isEmpty)
+    }
+
+    @Test func aFolderNamedLikeAnAppWithoutAPlistIsAPlainFolderAndIsRemoved() async throws {
+        let sandbox = try UninstallSandbox.make()
+        defer { sandbox.cleanUp() }
+        let container = sandbox.home.appendingPathComponent("Library/Containers/com.vendor.app", isDirectory: true)
+        let caches = container.appendingPathComponent("Data/Library/Caches", isDirectory: true)
+        try sandbox.makeFolder(caches)
+        let plain = sandbox.home.appendingPathComponent("Library/Caches/com.vendor.app", isDirectory: true)
+        try sandbox.makeFolder(plain)
+        let trash = FakeTrash(folder: sandbox.trashFolder)
+        let catalogApp = try packageEntry(paths: [
+            "~/Library/Containers/com.vendor.app/Data/Library/Caches", "~/Library/Caches/com.vendor.app"
+        ])
+
+        let report = try await Uninstaller.testing(sandbox, trash: trash).uninstall(app: catalogApp)
+
+        #expect(report.outcomes == [.trashed, .trashed])
+        #expect(!sandbox.exists(caches) && !sandbox.exists(plain))
         #expect(sandbox.canariesIntact)
     }
 
@@ -73,22 +110,17 @@ extension UninstallerTests {
         #expect(!sandbox.exists(listed))
     }
 
-    @Test func aListedAppWithoutABundleOrPlistIsRefused() async throws {
+    @Test func aListedAppFolderWithoutAPlistIsAPlainFolderAndIsRemoved() async throws {
         let sandbox = try UninstallSandbox.make()
         defer { sandbox.cleanUp() }
         let listed = listedBundle(in: sandbox)
         try sandbox.makeFolder(listed)
-        let trash = FakeTrash(folder: sandbox.trashFolder)
 
-        let report = try await Uninstaller.testing(sandbox, trash: trash)
+        let report = try await Uninstaller.testing(sandbox, trash: FakeTrash(folder: sandbox.trashFolder))
             .uninstall(app: packageEntry(paths: [Self.listedApp]))
 
-        guard case .refused = report.outcomes[0] else {
-            Issue.record("the listed app was not refused: \(report.outcomes)")
-            return
-        }
-        #expect(sandbox.exists(listed))
-        #expect(trash.trashedPaths.isEmpty)
+        #expect(report.outcomes == [.trashed])
+        #expect(!sandbox.exists(listed))
     }
 
     @Test func aZipEntryThatListsAnUnrelatedAppIsRefusedAndItsOwnAppIsRemoved() async throws {

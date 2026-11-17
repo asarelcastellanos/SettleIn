@@ -8,11 +8,13 @@ public enum PackageInstallState: Equatable, Sendable {
     /// The app bundle exists and the install is not finished. SettleIn infers this state.
     /// Installer.app does not report it.
     case installing
-    /// The app bundle exists and either the receipt is new or Installer.app has been closed for three polls in
-    /// a row.
+    /// The app bundle exists and the package receipt is new since before the run.
     case installed
-    /// Installer.app and the app bundle were both absent for three polls in a row, or the caller cancelled
-    /// the task.
+    /// The app bundle exists and Installer.app has been closed for three polls in a row. SettleIn saw no new
+    /// receipt, so it cannot say that the install finished cleanly.
+    case installedAfterInstallerClosed
+    /// Installer.app and the app bundle were both absent for enough polls in a row, or the caller cancelled
+    /// the task. The poll waits for 3 polls after it has seen Installer.app run, and for 10 when it never did.
     case cancelled
     case failed(PackageInstallFailure)
 }

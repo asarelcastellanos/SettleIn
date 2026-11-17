@@ -166,4 +166,29 @@ struct OperationLogBoundaryTests {
         log.append("/Users/alice/a then /Users/al/b then /Users/almond", at: Self.date)
         #expect(log.entries.first?.text == "/Users/alice/a then ~/b then /Users/almond")
     }
+
+    @Test(arguments: [
+        ("(/Users/al)", "(~)"),
+        ("'/Users/al'", "'~'"),
+        ("\"/Users/al\"", "\"~\""),
+        ("/Users/al: x", "~: x"),
+        ("/Users/al/foo", "~/foo"),
+        ("at /Users/al, then", "at ~, then"),
+        ("/Users/al", "~")
+    ])
+    func theHomeFolderIsReplacedWhereItStandsAlone(text: String, expected: String) {
+        var log = OperationLog(homeDirectory: "/Users/al")
+        log.append(text, at: Self.date)
+        #expect(log.entries.first?.text == expected)
+    }
+
+    @Test(arguments: [
+        "/Users/alice/x", "/tmp/Users/al/foo", "/Users/al.old/x", "/Users/al-2/x", "/Users/al_x", "x/Users/al",
+        "/Users/al2"
+    ])
+    func aPathThatOnlyContainsTheHomeFolderIsLeftAlone(text: String) {
+        var log = OperationLog(homeDirectory: "/Users/al")
+        log.append(text, at: Self.date)
+        #expect(log.entries.first?.text == text)
+    }
 }

@@ -18,7 +18,7 @@ Each entry needs these fields.
 - `sha256`, the SHA-256 hash of the file at each URL. A versioned entry must have one. A `latest` entry must not, because the file changes with each release, so it relies on the Team ID check alone.
 - `teamID`, the vendor's Team ID.
 - `bundleID`, the app's bundle identifier. Read it with `defaults read /path/to/Example.app/Contents/Info CFBundleIdentifier`.
-- `uninstallPaths`, the paths the uninstaller may remove. Each one has one of three forms. `/Applications/<Name>.app` is the app itself, and a `pkg` entry must list it. `~/Library/<folder>/<more>` uses one of these folders, with exactly this letter case: Application Support, Caches, Preferences, Logs, Containers, Saved Application State, HTTPStorages, WebKit, or Cookies. `~/.config/<name>` is the app's own folder under `~/.config`, so check that the folder belongs to the app. No path reaches into an `.app`, and none has a `..` or a wildcard. [docs/catalog.md](docs/catalog.md) lists the rules.
+- `uninstallPaths`, the paths the uninstaller may remove. Each one has one of three forms. `/Applications/<Name>.app` is the app itself, and a `pkg` entry must list it. `~/Library/<folder>/<more>` uses one of these folders, with exactly this letter case: Application Support, Caches, Preferences, Logs, Containers, Saved Application State, HTTPStorages, WebKit, or Cookies. `~/.config/<name>` is the app's own folder under `~/.config`, so check that the folder belongs to the app. No path goes inside an `.app` in `/Applications`, and none has a `..` or a wildcard. [docs/catalog.md](docs/catalog.md) lists the rules.
 
 ### Find the real Team ID
 

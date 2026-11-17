@@ -36,6 +36,49 @@ extension UninstallerTests {
         #expect(quits.timesCalled == 0)
     }
 
+    @Test func aRefusedRunningAppIsNeverAskedToQuit() async throws {
+        let sandbox = try UninstallSandbox.make()
+        defer { sandbox.cleanUp() }
+        // The app path is a symbolic link, so the guard refuses it. The app also runs.
+        try sandbox.makeSymlink(
+            at: sandbox.applications.appendingPathComponent(UninstallTestApp.name), to: sandbox.outside
+        )
+        let running = FakeRunningApps(running: true)
+        let quits = CallCounter()
+        let trash = FakeTrash(folder: sandbox.trashFolder)
+        let catalogApp = try plainEntry(paths: [])
+
+        let report = try await Uninstaller.testing(sandbox, trash: trash, runningApps: running, quitCounter: quits)
+            .uninstall(app: catalogApp)
+
+        guard case .refused = report.outcomes[0] else {
+            Issue.record("the app was not refused: \(report.outcomes)")
+            return
+        }
+        #expect(quits.timesCalled == 0, "the quit prompt ran for an app that SettleIn would not remove")
+        #expect(running.terminateTimeouts.isEmpty)
+        #expect(trash.trashedPaths.isEmpty)
+    }
+
+    @Test func aRunningAppOfAnotherBundleIsNeverAskedToQuit() async throws {
+        let sandbox = try UninstallSandbox.make()
+        defer { sandbox.cleanUp() }
+        try sandbox.makeApp(named: UninstallTestApp.name, bundleID: "com.example.SomethingElse")
+        let running = FakeRunningApps(running: true)
+        let quits = CallCounter()
+
+        let report = try await Uninstaller.testing(
+            sandbox, trash: FakeTrash(folder: sandbox.trashFolder), runningApps: running, quitCounter: quits
+        ).uninstall(app: plainEntry(paths: []))
+
+        guard case .refused = report.outcomes[0] else {
+            Issue.record("the app was not refused: \(report.outcomes)")
+            return
+        }
+        #expect(quits.timesCalled == 0)
+        #expect(running.terminateTimeouts.isEmpty)
+    }
+
     @Test func anAppThatCannotBeRemovedLeavesEverySupportPathInPlace() async throws {
         let sandbox = try UninstallSandbox.make()
         defer {

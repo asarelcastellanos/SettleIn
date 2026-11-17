@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import SettleInCore
 
+@Suite(.timeLimit(.minutes(1)))
 struct PackageInstallerTests {
     private let validSignature = PackageFakeVerifier(result: .valid(teamID("EQHXZ8M8AV")))
 
@@ -86,6 +87,35 @@ struct PackageInstallerTests {
         #expect(clock.sleepCount == 6)
     }
 
+    @Test func installerThatWasNeverSeenIsNotTakenForACancelBeforeTenAbsentPolls() async {
+        let clock = PackageFakeClock()
+        let subject = installer(
+            runner: PackageFakeRunner(), locator: PackageFakeLocator(appearsAfterChecks: nil),
+            monitor: PackageFakeMonitor(script: [], afterScript: false), clock: clock
+        )
+
+        let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
+
+        #expect(states == [.waitingForUser, .cancelled])
+        #expect(clock.sleepCount == 9)
+    }
+
+    @Test func installerSeenAfterNineAbsentPollsNeedsOnlyThreeMoreToCancel() async {
+        // Nine polls without Installer.app, one with it, then closed for good. Once it has been seen, three
+        // absent polls in a row are enough.
+        let clock = PackageFakeClock()
+        let script = Array(repeating: false, count: 9) + [true]
+        let subject = installer(
+            runner: PackageFakeRunner(), locator: PackageFakeLocator(appearsAfterChecks: nil),
+            monitor: PackageFakeMonitor(script: script, afterScript: false), clock: clock
+        )
+
+        let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
+
+        #expect(states == [.waitingForUser, .cancelled])
+        #expect(clock.sleepCount == 12)
+    }
+
     @Test func installerThatKeepsReopeningEmitsTimedOutAfterTheClosedPollsAddUp() async {
         // Closed twice, then open, again and again. Three closed polls never come in a row, so only the timeout
         // can end the run. The eleventh closed poll is poll 16, and it ends the run.
@@ -113,7 +143,7 @@ struct PackageInstallerTests {
 
         let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
 
-        #expect(states == [.waitingForUser, .installing, .installed])
+        #expect(states == [.waitingForUser, .installing, .installedAfterInstallerClosed])
         #expect(clock.sleepCount == 102)
     }
 
@@ -145,7 +175,7 @@ struct PackageInstallerTests {
 
         let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
 
-        #expect(states == [.waitingForUser, .installing, .installed])
+        #expect(states == [.waitingForUser, .installing, .installedAfterInstallerClosed])
         #expect(clock.sleepCount == 2)
     }
 
@@ -160,7 +190,7 @@ struct PackageInstallerTests {
 
         let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
 
-        #expect(states == [.waitingForUser, .installing, .installed])
+        #expect(states == [.waitingForUser, .installing, .installedAfterInstallerClosed])
         #expect(clock.sleepCount == 5)
     }
 
@@ -189,7 +219,7 @@ struct PackageInstallerTests {
 
         let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
 
-        #expect(states == [.waitingForUser, .installing, .installed])
+        #expect(states == [.waitingForUser, .installing, .installedAfterInstallerClosed])
         #expect(clock.sleepCount == 6, "four polls with Installer.app open, then three closed polls")
     }
 
@@ -202,7 +232,7 @@ struct PackageInstallerTests {
 
         let states = await collectStates(subject.install(package: packageFixtureURL, app: packageCatalogApp()))
 
-        #expect(states == [.waitingForUser, .installing, .installed])
+        #expect(states == [.waitingForUser, .installing, .installedAfterInstallerClosed])
     }
 
     // MARK: What the installer asks for

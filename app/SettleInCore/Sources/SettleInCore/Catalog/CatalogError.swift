@@ -9,7 +9,7 @@ public enum UninstallPathRule: Error, Equatable, Sendable {
     case containsParentTraversal
     case containsWildcard
     case malformed
-    /// A component other than the last ends in `.app`.
+    /// A path under `/Applications` goes inside an `.app` bundle.
     case insideAppBundle
     /// The first folder below `~/Library` is not one of `UninstallPathShape.allowedLibraryFolders`.
     case libraryFolderNotAllowed

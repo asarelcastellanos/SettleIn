@@ -166,29 +166,46 @@ extension AppInstallerTests {
 
     // MARK: Attach timeout
 
+    private static func perlSleeper(_ marker: String) -> (URL, [String]) {
+        (URL(fileURLWithPath: "/usr/bin/perl"), ["-e", "sleep $ARGV[0];", "600", marker])
+    }
+
+    private static func isRunning(matching text: String) async throws -> Bool {
+        let probe = try await ProcessCommandRunner().run(
+            executable: URL(fileURLWithPath: "/usr/bin/pgrep"), arguments: ["-f", text]
+        )
+        return probe.exitCode == 0
+    }
+
+    private static func killChildren(matching text: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        process.arguments = ["-9", "-f", text]
+        try? process.run()
+        process.waitUntilExit()
+    }
+
     @Test func attachTimeoutWaitsForTheChildToEndBeforeItDetaches() async throws {
         let sandbox = try InstallSandbox.make()
         let image = sandbox.sources.appendingPathComponent("never-opens.dmg")
         let order = OrderLog()
-        let slow = "4242.7"
+        let marker = "SettleInAttachTest-\(UUID().uuidString)"
+        defer { Self.killChildren(matching: marker) }
         let runner = InterceptingRunner { tool, arguments in
             guard tool.lastPathComponent == "hdiutil" else { return nil }
             if arguments.first == "attach" {
                 order.add("attach started")
+                let (perl, perlArguments) = Self.perlSleeper(marker)
                 do {
-                    return try await ProcessCommandRunner().run(
-                        executable: URL(fileURLWithPath: "/bin/sleep"), arguments: [slow]
-                    )
+                    return try await ProcessCommandRunner().run(executable: perl, arguments: perlArguments)
                 } catch {
                     order.add("attach ended")
                     throw error
                 }
             }
             if arguments.first == "detach", !arguments.contains("-force") {
-                let probe = try await ProcessCommandRunner().run(
-                    executable: URL(fileURLWithPath: "/usr/bin/pgrep"), arguments: ["-f", "sleep \(slow)"]
-                )
-                order.add(probe.exitCode == 0 ? "detach while the child runs" : "detach after the child ended")
+                let running = try await Self.isRunning(matching: marker)
+                order.add(running ? "detach while the child runs" : "detach after the child ended")
             }
             return nil
         }
@@ -200,6 +217,84 @@ extension AppInstallerTests {
 
         #expect(error == .mountTimedOut)
         #expect(order.entries == ["attach started", "attach ended", "detach after the child ended"])
+        #expect(sandbox.entries(in: sandbox.temporaryRoot).isEmpty)
+        await sandbox.cleanUp()
+    }
+
+    @Test func attachTimeoutDoesNotWaitForAGrandchildThatHoldsThePipes() async throws {
+        let sandbox = try InstallSandbox.make()
+        let image = sandbox.sources.appendingPathComponent("never-opens.dmg")
+        let marker = "SettleInAttachTest-\(UUID().uuidString)"
+        let ready = sandbox.root.appendingPathComponent("ready")
+        defer { Self.killChildren(matching: marker) }
+        let script = #"trap "" TERM; /usr/bin/perl -e 'sleep $ARGV[0];' 600 "$1" & wait"#
+        let runner = InterceptingRunner { tool, arguments in
+            guard tool.lastPathComponent == "hdiutil", arguments.first == "attach" else { return nil }
+            return try await ProcessCommandRunner(terminationGrace: .milliseconds(300)).run(
+                executable: URL(fileURLWithPath: "/bin/sh"), arguments: ["-c", script, "sh", marker, ready.path]
+            )
+        }
+        let installer = AppInstaller.testing(
+            sandbox, runner: runner, checker: .passing(team), attachTimeout: .seconds(1)
+        )
+        let start = ContinuousClock.now
+
+        let error = await installFailure { try await installer.install(archive: image, kind: .dmg, app: target) }
+
+        #expect(error == .mountTimedOut)
+        #expect(ContinuousClock.now - start < .seconds(10), "the attach waited for the grandchild")
+        #expect(sandbox.entries(in: sandbox.temporaryRoot).isEmpty)
+        await sandbox.cleanUp()
+    }
+
+    // MARK: Cancel
+
+    /// The mount points of images that the sandbox owns.
+    private static func mountPoints(of sandbox: InstallSandbox) async throws -> [String] {
+        let info = try await ProcessCommandRunner().run(
+            executable: URL(fileURLWithPath: "/usr/bin/hdiutil"), arguments: ["info", "-plist"]
+        )
+        guard
+            let plist = try? PropertyListSerialization.propertyList(from: Data(info.stdout.utf8), format: nil),
+            let images = (plist as? [String: Any])?["images"] as? [[String: Any]]
+        else { return [] }
+        return images
+            .filter { ($0["image-path"] as? String)?.contains(sandbox.root.lastPathComponent) == true }
+            .flatMap { ($0["system-entities"] as? [[String: Any]] ?? []).compactMap { $0["mount-point"] as? String } }
+    }
+
+    @Test func cancellingAfterTheImageIsAttachedStillDetachesIt() async throws {
+        let sandbox = try InstallSandbox.make()
+        let image = try await sandbox.makeDMG()
+        let order = OrderLog()
+        // The copy out of the image waits for the cancel, so the image is attached when the cancel arrives.
+        let runner = InterceptingRunner { tool, _ in
+            guard tool.lastPathComponent == "ditto" else { return nil }
+            order.add("copying")
+            try await Task.sleep(for: .seconds(60))
+            return nil
+        }
+        let installer = AppInstaller.testing(sandbox, runner: runner, checker: .passing(team))
+        let task = Task { try await installer.install(archive: image, kind: .dmg, app: target) }
+        #expect(await eventually { order.entries.contains("copying") })
+
+        task.cancel()
+        let outcome = await task.result
+
+        guard case .failure(let error) = outcome else {
+            Issue.record("the cancelled install returned a result")
+            await sandbox.cleanUp()
+            return
+        }
+        #expect(error is CancellationError)
+        let leftover = try await Self.mountPoints(of: sandbox)
+        #expect(leftover.isEmpty, "the image is still mounted at \(leftover)")
+        for mountPoint in leftover {
+            _ = try await ProcessCommandRunner().run(
+                executable: URL(fileURLWithPath: "/usr/bin/hdiutil"), arguments: ["detach", "-force", mountPoint]
+            )
+        }
+        #expect(sandbox.entries(in: sandbox.destination).isEmpty)
         #expect(sandbox.entries(in: sandbox.temporaryRoot).isEmpty)
         await sandbox.cleanUp()
     }

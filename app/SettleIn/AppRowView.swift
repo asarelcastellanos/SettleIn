@@ -47,6 +47,9 @@ struct AppRowView: View {
         if case .downloading = state {
             Button("Cancel", action: onCancel)
         }
+        if state.canStopWaiting(for: app.install) {
+            Button("Stop waiting", action: onCancel)
+        }
         if case .failed = state {
             Button("Copy log", action: onCopyLog)
         }

@@ -130,21 +130,29 @@ final class FakeAppInstaller: AppInstalling, @unchecked Sendable {
 
 final class FakePackageInstaller: PackageInstalling, @unchecked Sendable {
     private let states: [PackageInstallState]
+    private let holds: Bool
     private let lock = NSLock()
     private var recordedPackageExisted: [Bool] = []
+    private var terminations = 0
 
-    init(states: [PackageInstallState] = [.waitingForUser, .installing, .installed]) {
+    /// With `holds`, the stream stays open after `states`, as the real poll does while Installer.app is open.
+    init(states: [PackageInstallState] = [.waitingForUser, .installing, .installed], holds: Bool = false) {
         self.states = states
+        self.holds = holds
     }
 
     var packageExistedAtCall: [Bool] { lock.withLock { recordedPackageExisted } }
+
+    /// True once the reader of a stream stopped, which is what stops the real polling.
+    var wasStopped: Bool { lock.withLock { terminations > 0 } }
 
     func install(package: URL, app: CatalogApp) -> AsyncStream<PackageInstallState> {
         let existed = FileManager.default.fileExists(atPath: package.path)
         lock.withLock { recordedPackageExisted.append(existed) }
         return AsyncStream { continuation in
             states.forEach { continuation.yield($0) }
-            continuation.finish()
+            if !holds { continuation.finish() }
+            continuation.onTermination = { [self] _ in lock.withLock { terminations += 1 } }
         }
     }
 }
@@ -166,11 +174,13 @@ final class FakeUninstaller: AppUninstalling, @unchecked Sendable {
     }
 }
 
-/// Reports a URL for each bundle ID in `found`. The default URL names no real file, so an uninstall test sees
-/// the app as gone. A test that needs the app to exist on disk passes a URL of its own.
+/// Reports a URL for each bundle ID in `found`. The default URL sits in a temp folder that nothing creates, so
+/// an uninstall test sees the app as gone and never reads the real `/Applications`. A test that needs the app
+/// to exist on disk passes a URL of its own.
 struct FakeBundleLocator: BundleLocator {
     let found: Set<String>
-    var url = URL(fileURLWithPath: "/Applications/Fixture.app")
+    var url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("FakeLocator-\(UUID().uuidString)/Fixture.app", isDirectory: true)
 
     func applicationURL(forBundleID bundleID: BundleID) -> URL? {
         found.contains(bundleID.rawValue) ? url : nil

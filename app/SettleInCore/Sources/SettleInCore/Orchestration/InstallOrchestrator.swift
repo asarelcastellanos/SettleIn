@@ -110,11 +110,16 @@ public actor InstallOrchestrator {
         return await finish(task, for: app.id)
     }
 
-    /// Cancels a download. Once the download ends, the install cannot be cancelled, because the
-    /// installers could leave a half-copied app behind.
+    /// Cancels a download, or stops the wait for Installer.app on a pkg. Once the download ends, an install
+    /// cannot be cancelled otherwise, because the installers could leave a half-copied app behind. Stopping the
+    /// wait ends the polling and leaves Installer.app alone. The row then shows the app as installed when it
+    /// is on disk, and as idle when it is not.
     public func cancel(appID: String) {
-        guard case .downloading = state(of: appID) else { return }
-        record(appID, "cancel requested")
+        switch state(of: appID) {
+        case .downloading: record(appID, "cancel requested")
+        case .installing: record(appID, "stop waiting requested")
+        default: return
+        }
         runs[appID]?.task.cancel()
     }
 
@@ -185,15 +190,25 @@ public actor InstallOrchestrator {
             case .installing:
                 apply(.verified, to: app.id)
             case .installed:
-                record(app.id, "PackageInstaller: app and receipt found")
+                record(app.id, "PackageInstaller: the app is present and the package receipt is new")
+                apply(.verified, to: app.id)
+                apply(.installFinished, to: app.id)
+            case .installedAfterInstallerClosed:
+                record(app.id, "PackageInstaller: Installer.app is closed and the app is present, "
+                    + "but no new receipt appeared")
                 apply(.verified, to: app.id)
                 apply(.installFinished, to: app.id)
             case .cancelled:
-                record(app.id, "PackageInstaller: Installer.app quit before the app appeared")
+                record(app.id, "PackageInstaller: Installer.app is not running and the app did not appear")
                 apply(.cancelled, to: app.id)
             case .failed(let failure):
                 fail(app.id, .package(failure))
             }
+        }
+        if Task.isCancelled {
+            record(app.id, "stopped waiting for Installer.app")
+            if state(of: app.id) == .installing { apply(.cancelled, to: app.id) }
+            restoreRealState(of: app)
         }
     }
 
@@ -258,6 +273,19 @@ public actor InstallOrchestrator {
         return .completed(state(of: appID))
     }
 
+}
+
+// MARK: Logging and state changes
+
+extension InstallOrchestrator {
+    /// An install that ends in `idle` without a failure may have left an app on disk. Ask the locator, and show
+    /// the app as installed when it is there.
+    private func restoreRealState(of app: CatalogApp) {
+        guard state(of: app.id) == .idle, let found = installedCopy(of: app) else { return }
+        record(app.id, "the app is installed at \(found.path)")
+        apply(.appFound, to: app.id)
+    }
+
     private func recordNotes(_ notes: InstallNotes, for appID: String) {
         for note in notes.drain() { record(appID, "AppInstaller: \(note)") }
     }
@@ -272,11 +300,7 @@ public actor InstallOrchestrator {
         if isDecline(error) {
             record(appID, "declined by the user")
             apply(.declined, to: appID)
-            // A declined install returns to idle, so ask the locator whether the app is already installed.
-            if state(of: appID) == .idle, let found = installedCopy(of: app) {
-                record(appID, "the app is installed at \(found.path)")
-                apply(.appFound, to: appID)
-            }
+            restoreRealState(of: app)
             return
         }
         if InstallFailure.from(error) == .unexpected {

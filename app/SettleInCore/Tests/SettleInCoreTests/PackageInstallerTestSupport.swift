@@ -1,4 +1,5 @@
 import Foundation
+import Testing
 @testable import SettleInCore
 
 /// Plays back one result for `open` and a script for `pkgutil`. It records every call and runs nothing.
@@ -114,6 +115,9 @@ final class PackageFakeClock: PollingClock, @unchecked Sendable {
     private var slept = Duration.zero
     private var sleeps = 0
     private var interruptions = 0
+    /// A poll that never ends would loop forever on this clock, because it never waits. After this many sleeps the
+    /// clock records an issue and throws, so a rule that regresses fails the test and does not hang it.
+    static let sleepCap = 5_000
 
     init(holds: Bool = false) { self.holds = holds }
 
@@ -122,7 +126,14 @@ final class PackageFakeClock: PollingClock, @unchecked Sendable {
     var interruptedSleeps: Int { lock.withLock { interruptions } }
 
     func sleep(for duration: Duration) async throws {
-        lock.withLock { sleeps += 1 }
+        let count = lock.withLock { () -> Int in
+            sleeps += 1
+            return sleeps
+        }
+        if count > Self.sleepCap {
+            Issue.record("PackageFakeClock: more than \(Self.sleepCap) sleeps, so the poll never ended")
+            throw PackageFakeClockError.tooManySleeps
+        }
         if holds {
             do {
                 try await Task.sleep(for: .seconds(3600))
@@ -134,6 +145,10 @@ final class PackageFakeClock: PollingClock, @unchecked Sendable {
         await Task.yield()
         lock.withLock { slept += duration }
     }
+}
+
+enum PackageFakeClockError: Error {
+    case tooManySleeps
 }
 
 func packageCatalogApp(install: InstallMethod? = nil) -> CatalogApp {

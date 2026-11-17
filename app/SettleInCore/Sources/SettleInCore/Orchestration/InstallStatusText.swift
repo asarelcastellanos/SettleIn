@@ -1,6 +1,13 @@
 import Foundation
 
 extension InstallState {
+    /// True while a pkg row waits for Installer.app. The row then offers a way out, because SettleIn cannot
+    /// tell when the user has walked away from the Installer window.
+    public func canStopWaiting(for install: InstallMethod) -> Bool {
+        if case .installing = self, case .pkg = install { return true }
+        return false
+    }
+
     /// The status line of an app's row. The text depends on the install type, because the same state covers
     /// different work.
     ///

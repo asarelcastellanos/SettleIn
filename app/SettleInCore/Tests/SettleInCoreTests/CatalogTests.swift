@@ -239,6 +239,10 @@ struct CatalogTests {
         "~/Library/WebKit/com.example.App",
         "~/Library/Cookies/com.example.App.binarycookies",
         "~/Library/Application Support/Vendor/Listed.app",
+        "~/Library/Containers/com.vendor.app/Data/Library/Caches",
+        "~/Library/Caches/com.vendor.app",
+        "~/Library/Application Support/Example.app/Contents/Resources/x",
+        "~/.config/tool.app/settings.toml",
         "~/.config/example",
         "~/.config/example/settings.toml"
     ])
@@ -262,10 +266,6 @@ struct CatalogTests {
         ("/Applications/Ex\nample.app", .malformed),
         ("/Applications/Example.app/Contents/MacOS/x", .insideAppBundle),
         ("/Applications/Example.APP/Contents", .insideAppBundle),
-        ("~/Library/Application Support/Example.app/x", .insideAppBundle),
-        ("~/Library/Caches/Vendor.app/Cache/x", .insideAppBundle),
-        ("~/.config/tool.app/settings", .insideAppBundle),
-        ("~/Library/Application Support/A.app/B.app", .insideAppBundle),
         ("/Applications/Utilities/Example.app", .notAnApplication),
         ("/Applications/Example", .notAnApplication),
         ("/Applications/.app", .notAnApplication),

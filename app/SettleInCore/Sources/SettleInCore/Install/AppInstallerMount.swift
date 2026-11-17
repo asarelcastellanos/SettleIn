@@ -67,13 +67,24 @@ struct DiskImageMounter: Sendable {
     /// Detaches `mountPoint`, and retries once with `-force` when the first try fails. A failure after the retry
     /// is not an error for the install, because the app is already copied or the install already failed. With
     /// `reportingFailure`, the failure goes to `report`. A failed attach passes false, because nothing is mounted.
+    ///
+    /// The detach runs in a detached task. A cancelled install still has to unmount the image, and a runner
+    /// call inside a cancelled task throws at once.
     private func detach(_ mountPoint: URL, reportingFailure: Bool = false) async {
-        let first = try? await runner.run(executable: Self.hdiutil, arguments: ["detach", mountPoint.path])
+        let runner = self.runner
+        let report = reportingFailure ? self.report : nil
+        await Task.detached {
+            await Self.detachNow(mountPoint, runner: runner, report: report)
+        }.value
+    }
+
+    private static func detachNow(_ mountPoint: URL, runner: any CommandRunner, report: InstallReport?) async {
+        let first = try? await runner.run(executable: hdiutil, arguments: ["detach", mountPoint.path])
         if first?.exitCode == 0 { return }
-        let forced = try? await runner.run(executable: Self.hdiutil, arguments: ["detach", "-force", mountPoint.path])
-        guard reportingFailure, forced?.exitCode != 0 else { return }
+        let forced = try? await runner.run(executable: hdiutil, arguments: ["detach", "-force", mountPoint.path])
+        guard let report, forced?.exitCode != 0 else { return }
         let outcome = forced.map { "hdiutil exited with code \($0.exitCode)" } ?? "hdiutil did not start"
-        report?("the disk image mounted at \(mountPoint.path) was not detached, and \(outcome)")
+        report("the disk image mounted at \(mountPoint.path) was not detached, and \(outcome)")
     }
 
     /// Returns the `mount-point` entry that is the folder SettleIn asked for. Any other mount point is ignored.

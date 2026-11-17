@@ -26,9 +26,9 @@
       "pattern": "^[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$"
     },
     "uninstallPath": {
-      "description": "One of /Applications/<Name>.app, ~/Library/<folder>/<more>, or ~/.config/<name>. The ~/Library folder is Application Support, Caches, Preferences, Logs, Containers, Saved Application State, HTTPStorages, WebKit, or Cookies. No component except the last ends in .app. No .. component, no wildcard.",
+      "description": "One of /Applications/<Name>.app, ~/Library/<folder>/<more>, or ~/.config/<name>. The ~/Library folder is Application Support, Caches, Preferences, Logs, Containers, Saved Application State, HTTPStorages, WebKit, or Cookies. Nothing goes inside an .app under /Applications. No .. component, no wildcard.",
       "type": "string",
-      "pattern": "^(?!.*[\\x00-\\x1f\\x7f])(?!.*(^|/)\\.\\.(/|$))(?!.*(^|/)\\.(/|$))(?!.*//)(?!.*[*?\\[\\]{}])(?!.*[.][aA][pP][pP]/)(/Applications/[^/]+[.][aA][pP][pP]|~/Library/(Application Support|Caches|Preferences|Logs|Containers|Saved Application State|HTTPStorages|WebKit|Cookies)/[^/]+(/[^/]+)*|~/\\.config/[^/]+(/[^/]+)*)$"
+      "pattern": "^(?!.*[\\x00-\\x1f\\x7f])(?!.*(^|/)\\.\\.(/|$))(?!.*(^|/)\\.(/|$))(?!.*//)(?!.*[*?\\[\\]{}])(/Applications/[^/]+[.][aA][pP][pP]|~/Library/(Application Support|Caches|Preferences|Logs|Containers|Saved Application State|HTTPStorages|WebKit|Cookies)/[^/]+(/[^/]+)*|~/\\.config/[^/]+(/[^/]+)*)$"
     },
     "download": {
       "type": "object",

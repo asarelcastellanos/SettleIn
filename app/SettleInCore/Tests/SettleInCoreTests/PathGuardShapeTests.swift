@@ -18,19 +18,29 @@ struct PathGuardShapeTests {
         try PathGuard(roots: sandbox.roots).approve(text)
     }
 
-    @Test func refusesAPathThatReachesIntoAnAppBundle() throws {
+    @Test func refusesAPathThatReachesIntoAnAppBundleUnderApplications() throws {
         let sandbox = try UninstallSandbox.make()
         defer { sandbox.cleanUp() }
         let apps = sandbox.applications.path
         for text in [
             apps + "/Foo.app/Contents/MacOS/Foo",
             apps + "/Foo.APP/Contents",
-            apps + "/Foo.app/Bar.app",
-            "~/Library/Application Support/Foo.app/Contents/Info.plist",
-            "~/Library/Caches/Vendor.App/x",
-            "~/.config/tool.app/settings.toml"
+            apps + "/Foo.app/Bar.app"
         ] {
             #expect(rejection(text, in: sandbox) == .insideAppBundle, "\(text)")
+        }
+    }
+
+    @Test func approvesAFolderThatEndsInDotAppUnderLibraryAndConfig() throws {
+        let sandbox = try UninstallSandbox.make()
+        defer { sandbox.cleanUp() }
+        for text in [
+            "~/Library/Containers/com.vendor.app/Data/Library/Caches",
+            "~/Library/Caches/com.vendor.app",
+            "~/Library/Application Support/Foo.APP/Contents/x",
+            "~/.config/tool.app/settings.toml"
+        ] {
+            #expect(throws: Never.self) { try approved(text, in: sandbox) }
         }
     }
 

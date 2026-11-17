@@ -18,6 +18,17 @@ struct InstallStatusTextTests {
         #expect(InstallState.installing.statusText(for: Self.package) == "Waiting for Installer")
     }
 
+    @Test func onlyAWaitingPackageRowOffersToStopWaiting() {
+        #expect(InstallState.installing.canStopWaiting(for: Self.package))
+        for install in [Self.archive, Self.zip] {
+            #expect(!InstallState.installing.canStopWaiting(for: install))
+        }
+        let others: [InstallState] = [.idle, .downloading(progress: nil), .verifying, .installed, .uninstalling]
+        for state in others {
+            #expect(!state.canStopWaiting(for: Self.package), "\(state.name)")
+        }
+    }
+
     @Test(arguments: [archive, zip, package])
     func theOtherStatesReadTheSameForEveryInstallType(_ install: InstallMethod) {
         #expect(InstallState.idle.statusText(for: install) == "Not installed")

@@ -9,8 +9,11 @@ public struct PackageInstaller: Sendable {
     public static let defaultTimeout: Duration = .seconds(600)
     public static let pollInterval: Duration = .seconds(1)
     /// The number of polls in a row that must find Installer.app closed before the installer decides. With the
-    /// bundle present, the install finished. With the bundle absent, the user cancelled.
+    /// bundle present, the install is over. With the bundle absent, the user cancelled.
     public static let closedPollsBeforeVerdict = 3
+    /// The number of polls in a row with Installer.app and the bundle both absent before the installer reports
+    /// `cancelled`, when it never saw Installer.app run. Installer.app can take a few seconds to show up.
+    public static let absentPollsBeforeCancelWhenNeverSeen = 10
 
     private enum Tool {
         static let open = URL(fileURLWithPath: "/usr/bin/open")
@@ -82,10 +85,12 @@ public struct PackageInstaller: Sendable {
     /// Looks once per interval. The app bundle, the receipt and Installer.app decide the result. The
     /// already-installed check stops a run that starts with the bundle present, so a bundle that shows up during
     /// the polls came from this run.
-    /// - The result is `installed` when the bundle exists and either the receipt is new since before the open, or
-    ///   Installer.app has been closed for `closedPollsBeforeVerdict` polls in a row.
-    /// - The result is `cancelled` after Installer.app and the bundle have both been absent for
+    /// - The result is `installed` when the bundle exists and the receipt is new since before the open. It is
+    ///   `installedAfterInstallerClosed` when the bundle exists and Installer.app has been closed for
     ///   `closedPollsBeforeVerdict` polls in a row.
+    /// - The result is `cancelled` after Installer.app and the bundle have both been absent for
+    ///   `closedPollsBeforeVerdict` polls in a row, or for `absentPollsBeforeCancelWhenNeverSeen` polls when
+    ///   Installer.app never ran during the poll.
     /// - The result is `timedOut` after `timeout` of polls that found Installer.app closed.
     private func poll(
         bundleID: BundleID,
@@ -97,13 +102,15 @@ public struct PackageInstaller: Sendable {
         var closedWithBundle = 0
         var absentPolls = 0
         var announcedInstalling = false
+        var sawInstaller = false
         while !Task.isCancelled {
             let installerRunning = monitor.isInstallerRunning()
+            sawInstaller = sawInstaller || installerRunning
             if locator.applicationURL(forBundleID: bundleID) != nil {
                 absentPolls = 0
                 closedWithBundle = installerRunning ? 0 : closedWithBundle + 1
                 if !receiptBefore, await receiptExists(for: identifier) { return .installed }
-                if closedWithBundle >= Self.closedPollsBeforeVerdict { return .installed }
+                if closedWithBundle >= Self.closedPollsBeforeVerdict { return .installedAfterInstallerClosed }
                 if !announcedInstalling {
                     announcedInstalling = true
                     report(.installing)
@@ -111,7 +118,9 @@ public struct PackageInstaller: Sendable {
             } else {
                 closedWithBundle = 0
                 absentPolls = installerRunning ? 0 : absentPolls + 1
-                if absentPolls >= Self.closedPollsBeforeVerdict { return .cancelled }
+                let needed = sawInstaller
+                    ? Self.closedPollsBeforeVerdict : Self.absentPollsBeforeCancelWhenNeverSeen
+                if absentPolls >= needed { return .cancelled }
             }
             if !installerRunning && closedTime >= timeout { return .failed(.timedOut) }
             do {

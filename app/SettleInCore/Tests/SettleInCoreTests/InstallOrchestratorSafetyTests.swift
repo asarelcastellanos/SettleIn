@@ -176,6 +176,17 @@ extension InstallOrchestratorTests {
             }
         }
 
+        @Test func aCopyInsideAVolumeTrashesFolderDoesNotCountAsPresent() async throws {
+            try await withDownloadScratchRoot { root in
+                let trashed = root.appendingPathComponent(".Trashes/501/Fixture.app", isDirectory: true)
+                try FileManager.default.createDirectory(at: trashed, withIntermediateDirectories: true)
+
+                let run = await uninstallOutcome(locatedAt: trashed, root: root)
+
+                #expect(run.outcome == .completed(.idle))
+            }
+        }
+
         @Test func pathsLeftAloneStillReportTheMoreSpecificFailure() async throws {
             try await withDownloadScratchRoot { root in
                 let leftover = root.appendingPathComponent("Fixture.app", isDirectory: true)

@@ -14,7 +14,7 @@ public enum PathRejection: Error, Equatable, Sendable, CustomStringConvertible {
     case caseDiffersFromRoot
     case isRoot
     case directChildOfLibrary
-    /// A component other than the last ends in `.app`, so the path reaches into a bundle.
+    /// A path under `/Applications` goes inside an `.app` bundle.
     case insideAppBundle
     /// The first folder below `~/Library` is not one that SettleIn removes from.
     case libraryFolderNotAllowed

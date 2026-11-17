@@ -14,13 +14,16 @@ After Installer.app opens, `PackageInstaller` polls once per second for an app w
 
 - `waitingForUser` means Installer.app is open and the app bundle does not exist.
 - `installing` means the app bundle exists and the install is not finished.
-- `installed` means the app bundle exists and either the receipt is new since before the open, or Installer.app has been closed for three polls in a row.
-- `cancelled` means Installer.app and the app bundle were both absent for three polls in a row, or the caller cancelled the task.
+- `installed` means the app bundle exists and the receipt is new since before the open.
+- `installedAfterInstallerClosed` means the app bundle exists and Installer.app has been closed for three polls in a row. SettleIn saw no new receipt. The UI treats it like `installed`, and the log says that no new receipt appeared.
+- `cancelled` means Installer.app and the app bundle were both absent for enough polls in a row, or the caller cancelled the task. The poll waits for 3 polls after it saw Installer.app run at least once, and for 10 polls when it never did, because Installer.app can take several seconds to start.
 - `failed` means the signature check failed, the install timed out, the app was already installed, or Installer.app did not open.
 
 The timeout is 10 minutes by default. It counts only the polls that find Installer.app closed, so the poll never reports `timedOut` while the Installer window is open. Because three closed polls in a row already end the run, a timeout needs Installer.app to close and reopen repeatedly. This matters because the orchestrator deletes the downloaded package when the poll returns, and Installer.app may still read the file.
 
 Cancelling the task stops the polling. It does not quit Installer.app, because an install in progress has to finish or fail on its own.
+
+The row shows a "Stop waiting" button while the state is `installing` for a pkg. The button calls the orchestrator's `cancel`, which cancels the polling task and never touches Installer.app. The orchestrator then does what a declined install does. It asks LaunchServices for the bundle ID. When the app exists on disk outside the Trash, the row shows "Installed", and otherwise it returns to "Not installed". Without this button a row could wait forever, because an open Installer window never times out.
 
 ## Rejected options
 
@@ -35,7 +38,7 @@ SettleIn cannot read the state of Installer.app, so `installing` is inferred. Th
 - Installer.app does not report progress, so SettleIn shows no percentage.
 - LaunchServices can report a stale answer for a bundle ID. The manual test plan in issue 12 confirms detection on a clean VM with real Chrome.
 - SettleIn cannot tell a user who closed the window from an installer that crashed. Both end as `cancelled` when the bundle is absent.
-- Three polls in a row must find Installer.app closed before the result is `cancelled` (bundle absent) or `installed` (bundle present, no new receipt). A slow start of Installer.app is not read as a quit, and the verdict takes about three seconds.
+- Three polls in a row must find Installer.app closed before the result is `installedAfterInstallerClosed` (bundle present, no new receipt). The same count ends the run as `cancelled` (bundle absent) once SettleIn has seen Installer.app run. Before that, `cancelled` needs 10 polls, so a slow start of Installer.app is not read as a quit.
 - When a receipt existed before the run, SettleIn cannot see a new receipt. It reports `installed` when Installer.app has been closed for three polls in a row with the bundle present. A user who closes the Installer window before the install finishes, after the bundle was copied, also ends as `installed`.
 
 SettleIn does not use Accessibility APIs or read the Installer.app window to get a better signal. That is out of scope.

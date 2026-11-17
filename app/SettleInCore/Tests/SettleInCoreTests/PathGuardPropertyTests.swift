@@ -102,11 +102,11 @@ struct PathGuardPropertyTests {
         }
         if isInside(resolved, root: roots[1]) {
             let below = relative(to: roots[1])
-            return below.count >= 2 && libraryFolders.contains(below[0]) && !below.dropLast().contains(where: isApp)
+            return below.count >= 2 && libraryFolders.contains(below[0])
         }
         if isInside(resolved, root: roots[2]) {
             let below = relative(to: roots[2])
-            return below.count >= 1 && !below.dropLast().contains(where: isApp)
+            return below.count >= 1
         }
         return false
     }

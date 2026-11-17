@@ -3,8 +3,9 @@ import Foundation
 /// Runs a program with `Process`. It passes the argument array to the program directly.
 ///
 /// Cancelling the task that calls `run` ends the program. The runner sends SIGTERM, and sends SIGKILL when the
-/// program is still alive after `terminationGrace`. `run` then throws `CancellationError`, and it throws only
-/// after the program has ended.
+/// program is still alive after `terminationGrace`. `run` then throws `CancellationError`. It throws after the
+/// program has ended. A grandchild can keep the output pipes open after SIGKILL, so `run` waits at most 2 more
+/// seconds for the pipes, then closes them and throws anyway.
 public struct ProcessCommandRunner: CommandRunner {
     private let terminationGrace: Duration
 
@@ -36,6 +37,8 @@ private final class ChildProcess: @unchecked Sendable {
     private let terminationGrace: Duration
     private let lock = NSLock()
     private var cancelled = false
+    private var hardDeadline: ContinuousClock.Instant?
+    private static let pipeWait: Duration = .seconds(2)
 
     init(executable: URL, arguments: [String], terminationGrace: Duration) {
         process.executableURL = executable
@@ -48,6 +51,7 @@ private final class ChildProcess: @unchecked Sendable {
     func cancel() {
         let isRunning = lock.withLock {
             cancelled = true
+            hardDeadline = ContinuousClock.now + terminationGrace + Self.pipeWait
             return process.isRunning
         }
         guard isRunning else { return }
@@ -83,7 +87,13 @@ private final class ChildProcess: @unchecked Sendable {
                 group.leave()
             }
         }
-        group.wait()
+        while group.wait(timeout: .now() + .milliseconds(50)) == .timedOut {
+            guard let deadline = lock.withLock({ hardDeadline }), ContinuousClock.now >= deadline else { continue }
+            // A grandchild still holds the pipes. The readers stay blocked until it ends, and the caller moves on.
+            try? stdoutPipe.fileHandleForReading.close()
+            try? stderrPipe.fileHandleForReading.close()
+            throw CancellationError()
+        }
         process.waitUntilExit()
         if lock.withLock({ cancelled }) { throw CancellationError() }
 
@@ -104,7 +114,7 @@ private final class ChildProcess: @unchecked Sendable {
     }
 }
 
-/// Holds the bytes one reader collected. `group.wait()` orders the write before the read.
+/// Holds the bytes one reader collected. The group wait orders the write before the read.
 private final class DataBox: @unchecked Sendable {
     var data = Data()
 }

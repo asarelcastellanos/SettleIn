@@ -45,6 +45,23 @@ struct SignatureSpoofTests {
         #expect(SignatureVerifier.parsePackageSignature(pkgutilOutput: "\u{85}" + package) == .unrecognized)
     }
 
+    /// The separator sits in a name, and the Team ID line is a clean `\n` line of its own. A split on `\n` alone
+    /// reads that line, so only the guard against the separators makes these outputs fail.
+    @Test(arguments: separators.map(\.scalar))
+    func aSeparatorInAnotherLineStillFailsTheWholeOutput(separator: String) {
+        let codesign = "Executable=/Apps/Ev\(separator)il.app/Contents/MacOS/Evil\nTeamIdentifier=EQHXZ8M8AV\n"
+        #expect(SignatureVerifier.parseTeamIdentifier(codesignOutput: codesign) == nil)
+        let status = "   Status: signed by a developer certificate issued by Apple for distribution"
+        let package = "Package \"Ev\(separator)il\":\n\(status)\n   Certificate Chain:\n"
+            + "    1. Developer ID Installer: Evil (EQHXZ8M8AV)\n"
+        #expect(SignatureVerifier.parsePackageSignature(pkgutilOutput: package) == .unrecognized)
+    }
+
+    @Test func theSameOutputWithoutTheSeparatorParsesAsTrusted() {
+        let codesign = "Executable=/Apps/Evil.app/Contents/MacOS/Evil\nTeamIdentifier=EQHXZ8M8AV\n"
+        #expect(SignatureVerifier.parseTeamIdentifier(codesignOutput: codesign) == "EQHXZ8M8AV")
+    }
+
     @Test func aTrailingCarriageReturnIsStripped() {
         #expect(SignatureVerifier.parseTeamIdentifier(codesignOutput: "TeamIdentifier=EQHXZ8M8AV\r\n") == "EQHXZ8M8AV")
         let package = "   Status: no signature\r\n"

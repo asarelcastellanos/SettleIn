@@ -7,9 +7,8 @@ import Foundation
 /// - It starts with `/` or `~/`, and it has no `..` component after `~` is expanded.
 /// - It is inside `/Applications`, `~/Library`, or `~/.config`, compared one component at a time and with
 ///   letter case respected. It is not a root itself, and it is not a direct child of `~/Library`.
-/// - It follows the shape rules in `UninstallPathShape`. It holds no `.app` component before its last one, it
-///   is `/Applications/<Name>.app` under `/Applications`, it starts with an allowed folder under `~/Library`,
-///   and it goes at least one level below `~/.config`.
+/// - It follows the shape rules in `UninstallPathShape`. It is `/Applications/<Name>.app` under `/Applications`,
+///   it starts with an allowed folder under `~/Library`, and it goes at least one level below `~/.config`.
 /// - After every symbolic link in the path and its parent folders is resolved, the path is still inside the
 ///   same root and still has the same components below it. A symbolic link anywhere in the path refuses it.
 public struct PathGuard: Sendable {

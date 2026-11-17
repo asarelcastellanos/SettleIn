@@ -11,7 +11,7 @@ This directory holds the macOS app. `SettleIn.xcodeproj` is the SwiftUI app, and
 ## Layout
 
 - `SettleIn/` holds the app sources and `SettleIn.entitlements`.
-- `SettleInCore/` holds the package. `Sources/SettleInCore` is the library and `Tests/SettleInCoreTests` holds its tests.
+- `SettleInCore/` holds the package. `Sources/SettleInCore` is the library and `Tests/SettleInCoreTests` holds its tests. `Tests/Fixtures` holds captured tool output and `build-fixtures.sh`, which builds the end-to-end fixtures.
 - `.swiftlint.yml` holds the lint rules for both the app and the package.
 
 ## Build and test
@@ -22,6 +22,12 @@ Test the package alone.
 
 ```sh
 swift test --package-path app/SettleInCore
+```
+
+Run only the end-to-end tests. They build a tiny ad hoc signed app and its dmg, zip, and pkg with `Tests/Fixtures/build-fixtures.sh` in a temp folder, and they install into a temp home and a temp applications folder. They never touch `/Applications` or your home folder, and they never ask for a password. The run builds the fixtures once and gives each test a copy, and it takes under a minute. [docs/test-plan.md](../docs/test-plan.md) covers the manual runs on the real apps.
+
+```sh
+swift test --package-path app/SettleInCore --filter IntegrationTests
 ```
 
 Build the app.

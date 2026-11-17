@@ -44,3 +44,8 @@ pkgutil-signed-package.txt
 pkgutil-unsigned-package.txt
   Command: pkgutil --check-signature on a tiny package built with pkgbuild
   and no signature. Exit code 1.
+
+build-fixtures.sh
+  Not captured output. It builds Fixture.app, Fixture.dmg, Fixture.zip, and
+  Fixture.pkg in a folder you name. The end-to-end tests run it in a temp
+  folder. The repository holds no binary fixtures.
